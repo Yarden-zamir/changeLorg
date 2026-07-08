@@ -50,10 +50,9 @@ PROFILES = {
     "compact-release-notes": enrichment_profile("compact-release-notes", max_items=8),
     "vscode-updates": enrichment_profile(
         "vscode-updates",
-        fetch_link_when=("thin_summary", "summary_repeats_title", "generic_summary"),
+        fetch_link_when=("thin_summary", "summary_repeats_title", "generic_summary", "version_only_title"),
         max_items=8,
         drop_phrases=(
-            "Visual Studio Code",
             "Edit",
             "Build",
             "Debug",
@@ -62,9 +61,16 @@ PROFILES = {
             "Last updated",
             "Downloads:",
             "Release date:",
+            "Rewatch VS Code Live",
             "You can still track our progress",
             "Happy Coding!",
         ),
+    ),
+    "minecraft-news": enrichment_profile(
+        "minecraft-news",
+        fetch_link_when=("thin_summary", "summary_repeats_title", "generic_summary"),
+        max_items=8,
+        drop_phrases=("Share this story", "Community Creations", "News"),
     ),
     "raycast-changelog": enrichment_profile("raycast-changelog", max_items=7),
     "status-feed": enrichment_profile("status-feed", compress_overloaded=False),
@@ -73,6 +79,8 @@ PROFILES = {
 
 URL_PROFILE_HINTS = {
     "code.visualstudio.com/feed.xml": "vscode-updates",
+    "github.com/microsoft/vscode/releases.atom": "vscode-updates",
+    "minecraft.net/en-us/feeds/community-content/rss": "minecraft-news",
     "www.python.org/downloads/feed.rss": "linked-release-notes",
     "docs.slack.dev/changelog/rss.xml": "linked-release-notes",
     "api.slack.com/changelog.rss": "linked-release-notes",
@@ -169,6 +177,8 @@ def is_ignored_release_note_line(tag: str, text: str, profile: EnrichmentProfile
     lowered = text.lower()
     if tag.startswith("h"):
         return True
+    if is_url_only_line(text):
+        return True
     if "full changelog" in lowered or "compare" in lowered:
         return True
     if lowered.startswith("released on "):
@@ -178,6 +188,23 @@ def is_ignored_release_note_line(tag: str, text: str, profile: EnrichmentProfile
     if lowered in {"happy coding!"} or lowered.startswith("you can still track our progress"):
         return True
     return any(phrase.lower() in lowered for phrase in profile.drop_phrases)
+
+
+def is_url_only_line(text: str) -> bool:
+    normalized = normalize_text(text)
+    if not normalized.startswith(("http://", "https://")):
+        return False
+    return " " not in normalized
+
+
+def first_url_line(html: str) -> str | None:
+    for block in text_blocks(html):
+        if is_url_only_line(block.text):
+            return block.text
+    for token in plain_text(html).split():
+        if token.startswith(("http://", "https://")):
+            return token.rstrip(".,)")
+    return None
 
 
 def first_meaningful_line(html: str, profile: EnrichmentProfile) -> str | None:
@@ -256,7 +283,7 @@ def enrich_change(
     linked_body: str | None = None
 
     if url and fetch_link and profile.fetch_link_when.intersection(flags):
-        linked_body = fetch_link(url)
+        linked_body = fetch_link(first_url_line(body) or url)
         if linked_body:
             flags.append("linked_content_fetched")
             body = linked_body

@@ -132,6 +132,55 @@ def test_enrichment_drops_common_linked_page_boilerplate() -> None:
     assert enriched.summary == "- Browser tools for agents now support richer context."
 
 
+def test_enrichment_follows_url_only_release_notes_to_actual_content() -> None:
+    profile = profile_for("https://github.com/microsoft/vscode/releases.atom")
+    fetched_urls: list[str] = []
+
+    def fetch_link(url: str) -> str:
+        fetched_urls.append(url)
+        return """
+        <p>📼 Rewatch VS Code Live at MS Build 2026</p>
+        <p>Welcome to the 1.128 release of Visual Studio Code. This release brings richer multi-chat agent sessions.</p>
+        <ul><li>Quick chats: Ask a question without opening a workspace first.</li></ul>
+        """
+
+    enriched = enrich_change(
+        title="1.128.0",
+        summary='<p><a href="https://code.visualstudio.com/updates/v1_128">https://code.visualstudio.com/updates/v1_128</a></p>',
+        content="",
+        url="https://github.com/microsoft/vscode/releases/tag/1.128.0",
+        feed_title="Release notes from vscode",
+        profile=profile,
+        fetch_link=fetch_link,
+    )
+
+    assert fetched_urls == ["https://code.visualstudio.com/updates/v1_128"]
+    assert enriched.title == "vscode - Welcome to the 1.128 release of Visual Studio Code. This release brings richer multi-chat agent sessions."
+    assert enriched.summary == "Welcome to the 1.128 release of Visual Studio Code. This release brings richer multi-chat agent sessions.\n- Quick chats: Ask a question without opening a workspace first."
+
+
+def test_enrichment_fetches_minecraft_articles_when_summary_repeats_title() -> None:
+    profile = profile_for("https://www.minecraft.net/en-us/feeds/community-content/rss")
+
+    enriched = enrich_change(
+        title="Minecraft Preview 26.40.30",
+        summary="Minecraft Preview 26.40.30",
+        content="",
+        url="https://www.minecraft.net/en-us/article/minecraft-preview-26-40-30",
+        feed_title="Minecraft",
+        profile=profile,
+        fetch_link=lambda url: """
+        <p>A Minecraft: Bedrock Edition Preview</p>
+        <p>Weary from all that hiking? Seek out an abandoned camp to rest your blocky bones.</p>
+        <ul><li>The Cushion is an item that the player can place in the world.</li></ul>
+        """,
+    )
+
+    assert enriched.title == "Minecraft Preview 26.40.30"
+    assert enriched.summary == "A Minecraft: Bedrock Edition Preview\nWeary from all that hiking? Seek out an abandoned camp to rest your blocky bones.\n- The Cushion is an item that the player can place in the world."
+    assert "linked_content_fetched" in enriched.quality_flags
+
+
 def test_enrichment_compacts_overloaded_content() -> None:
     profile = enrichment_profile("compact", max_items=2)
     body = "<ul>" + "".join(f"<li>Fix number {index} with a long enough explanation to trigger compaction</li>" for index in range(80)) + "</ul>"
