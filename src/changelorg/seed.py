@@ -58,6 +58,7 @@ DEFAULT_SOURCES: list[SourceCreate] = [
     ),
     SourceCreate(name="Google Gen AI Python SDK Releases", plugin="rss-atom", config={"profile": "dev", "url": "https://github.com/googleapis/python-genai/releases.atom"}),
     SourceCreate(name="GitHub CLI Releases", plugin="rss-atom", config={"profile": "dev", "url": "https://github.com/cli/cli/releases.atom"}),
+    SourceCreate(name="GitHub Copilot CLI Releases", plugin="rss-atom", config={"profile": "dev", "url": "https://github.com/github/copilot-cli/releases.atom"}),
     SourceCreate(name="OpenCode Releases", plugin="rss-atom", config={"profile": "dev", "url": "https://github.com/anomalyco/opencode/releases.atom"}),
     SourceCreate(name="DuckDB Releases", plugin="rss-atom", config={"profile": "dev", "url": "https://github.com/duckdb/duckdb/releases.atom"}),
     SourceCreate(name="Raycast Changelog", plugin="rss-atom", config={"profile": "dev", "url": "https://raycast.com/changelog/feed.xml"}),

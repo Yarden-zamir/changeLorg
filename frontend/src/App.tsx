@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ChevronDown,
   ExternalLink,
-  FileText,
   Inbox,
   LibraryBig,
   Newspaper,
@@ -433,7 +432,6 @@ export default function App() {
                   <Newspaper className="h-4 w-4" />
                   The desk
                 </div>
-                <h2 className="font-serif text-3xl font-black leading-none tracking-tight text-stone-950 sm:text-4xl">Today&apos;s papers</h2>
               </div>
               <p className="max-w-md text-sm leading-6 text-stone-600">
                 {feedChanges.length} readable {profileLabel(selectedProfile)} item{feedChanges.length === 1 ? "" : "s"} on the desk from the last {windowLabel(feedWindow)}. Desk state stays in this browser.
@@ -493,10 +491,6 @@ function ControlPanel({
       <div className="overflow-hidden rounded-[2rem] border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
         <div className="border-b border-[#fff8e8]/15 p-5 sm:p-6">
           <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Local changelog desk</Badge>
-          <h1 className="mt-5 font-serif text-5xl font-black leading-[0.9] tracking-tight sm:text-6xl lg:text-5xl">change<br />lorg</h1>
-          <p className="mt-4 text-sm leading-6 text-[#d7d0c0]">
-            A compact research desk for release notes, product updates, and the bits worth shelving before they disappear into tabs.
-          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-px border-b border-[#fff8e8]/15 bg-[#fff8e8]/15 text-center">
@@ -571,10 +565,6 @@ function ControlPanel({
             </select>
           </label>
 
-          <div className="rounded-2xl border border-[#f8df9d]/30 bg-[#f8df9d] px-4 py-4 text-stone-950">
-            <span className="block font-black">Auto-refreshed hourly</span>
-            <span className="mt-1 block text-xs font-semibold text-stone-700">Use filters here. The backend fetches and normalizes sources every hour.</span>
-          </div>
         </div>
       </div>
     </aside>
@@ -795,8 +785,8 @@ function EmptyState() {
   return (
     <div className="mt-5 rounded-[1.75rem] border border-dashed border-stone-950/25 bg-stone-100/80 p-6 text-center">
       <Inbox className="mx-auto h-9 w-9 text-stone-600" />
-      <h3 className="mt-4 font-serif text-2xl font-black">No cached changes on the desk</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">The backend refreshes sources hourly. If this stays empty, add sources with the CLI or check the backend refresh logs.</p>
+      <h3 className="mt-4 font-serif text-2xl font-black">No newspapers on the desk</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">Try a wider window, another profile, or a different source filter.</p>
     </div>
   );
 }
@@ -857,12 +847,13 @@ function ChangeCard({
         </div>
 
         <div className="flex flex-col justify-between border-t border-stone-950 bg-[#eee6d6] p-4 md:border-l md:border-t-0">
-          <div className="space-y-1 text-sm text-stone-700">
-            <div className="flex items-center gap-2 font-black text-stone-950">
-              <FileText className="h-4 w-4" />
-              Actions
+          <div className="rounded-2xl border border-stone-950/10 bg-white/55 p-3 text-sm text-stone-700">
+            <div className="flex items-center gap-2 text-[0.65rem] font-black uppercase tracking-[0.2em] text-stone-500">
+              <Newspaper className="h-3.5 w-3.5" />
+              Filing slip
             </div>
-            <p className="leading-5">Open, shelf, annotate, or clear from the desk.</p>
+            <div className="mt-3 font-black leading-tight text-stone-950">{change.source_name}</div>
+            <div className="mt-1 text-xs font-semibold leading-5 text-stone-600">{formatDate(change.published_at)}</div>
           </div>
 
           <div className="mt-4 grid gap-2">
