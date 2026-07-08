@@ -25,6 +25,28 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _source_profile(source: Source) -> str:
+    profile = source.config.get("profile", "dev")
+    if isinstance(profile, str) and profile.strip():
+        return profile.strip()
+    return "dev"
+
+
+def _source_ids_for_profile(profile: str) -> list[int]:
+    normalized = profile.strip()
+    return [source.id for source in list_sources(enabled=True) if _source_profile(source) == normalized]
+
+
+def _merge_source_filters(source_id: list[int] | None, profile: str | None) -> list[int] | None:
+    if profile is None:
+        return source_id
+
+    profile_ids = set(_source_ids_for_profile(profile))
+    if source_id is None:
+        return sorted(profile_ids)
+    return sorted(profile_ids.intersection(source_id))
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="changelorg", version="0.1.0")
     app.add_middleware(
@@ -70,6 +92,14 @@ def create_app() -> FastAPI:
     def get_sources(enabled: bool | None = None) -> list[Source]:
         return list_sources(enabled=enabled)
 
+    @app.get("/profiles")
+    def get_profiles() -> list[dict[str, object]]:
+        profiles: dict[str, int] = {}
+        for source in list_sources(enabled=True):
+            profile = _source_profile(source)
+            profiles[profile] = profiles.get(profile, 0) + 1
+        return [{"name": name, "source_count": count} for name, count in sorted(profiles.items())]
+
     @app.post("/sources", response_model=Source, status_code=201)
     def post_source(source: SourceCreate) -> Source:
         return add_source(source)
@@ -114,6 +144,7 @@ def create_app() -> FastAPI:
         since: Annotated[str | None, Query(description="ISO datetime/date or duration like 7d")] = None,
         until: Annotated[str | None, Query(description="ISO datetime/date; defaults to now")] = None,
         source_id: Annotated[list[int] | None, Query()] = None,
+        profile: str | None = None,
         include_dismissed: bool = False,
         saved: bool | None = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
@@ -128,7 +159,7 @@ def create_app() -> FastAPI:
             change.model_dump(mode="json")
             for change in list_changes(
                 window=window,
-                source_ids=source_id,
+                source_ids=_merge_source_filters(source_id, profile),
                 include_dismissed=include_dismissed,
                 saved=saved,
                 limit=limit,

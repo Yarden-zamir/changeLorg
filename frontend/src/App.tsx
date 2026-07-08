@@ -20,8 +20,10 @@ import { Card, CardContent } from "./components/ui/card";
 
 type Change = {
   id: number;
+  external_id: string | null;
   source_id: number;
   source_name: string;
+  source_profile: string;
   plugin: string;
   title: string;
   url: string | null;
@@ -35,12 +37,24 @@ type Change = {
   state_updated_at: string | null;
 };
 
-type ChangeUpdate = Partial<Pick<Change, "dismissed" | "saved" | "note">>;
+type UserChangeState = {
+  dismissed?: boolean;
+  saved?: boolean;
+  note?: string;
+};
+type UserStateByChange = Record<string, UserChangeState>;
 type SortKey = "newest" | "oldest" | "source" | "saved";
 type FeedWindow = "24h" | "7d" | "30d" | "90d" | "365d";
+type ProfileName = "dev" | "games" | string;
 type SourceFilter = { id: number; name: string } | null;
+type Profile = { name: ProfileName; source_count: number };
+type ViewChange = Change & {
+  change_key: string;
+};
 
 const apiUrl = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
+const userStateStorageKey = "changelorg:user-state:v1";
+const selectedProfileStorageKey = "changelorg:selected-profile:v1";
 
 const feedWindows: Array<{ value: FeedWindow; label: string; caption: string }> = [
   { value: "24h", label: "24 hours", caption: "Today" },
@@ -57,24 +71,65 @@ const sortOptions: Array<{ value: SortKey; label: string }> = [
   { value: "saved", label: "Saved first" },
 ];
 
-async function fetchChanges(feedWindow: FeedWindow, includeDismissed = false): Promise<Change[]> {
-  const response = await fetch(`${apiUrl}/changes?since=${feedWindow}&limit=200&include_dismissed=${includeDismissed}`);
+async function fetchChanges(feedWindow: FeedWindow, profile: ProfileName): Promise<Change[]> {
+  const response = await fetch(`${apiUrl}/changes?since=${feedWindow}&limit=200&include_dismissed=true&profile=${encodeURIComponent(profile)}`);
   if (!response.ok) {
     throw new Error(`Could not load changes: ${response.status}`);
   }
   return response.json();
 }
 
-async function updateChange(changeId: number, update: ChangeUpdate): Promise<Change> {
-  const response = await fetch(`${apiUrl}/changes/${changeId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(update),
-  });
+async function fetchProfiles(): Promise<Profile[]> {
+  const response = await fetch(`${apiUrl}/profiles`);
   if (!response.ok) {
-    throw new Error(`Could not update change: ${response.status}`);
+    throw new Error(`Could not load profiles: ${response.status}`);
   }
   return response.json();
+}
+
+function readUserState(): UserStateByChange {
+  try {
+    const raw = localStorage.getItem(userStateStorageKey);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as UserStateByChange) : {};
+  } catch {
+    return {};
+  }
+}
+
+function readSelectedProfile(): ProfileName {
+  try {
+    return localStorage.getItem(selectedProfileStorageKey) || "dev";
+  } catch {
+    return "dev";
+  }
+}
+
+function changeKey(change: Change) {
+  return `${change.source_id}:${change.external_id || change.url || change.title}`;
+}
+
+function normalizeState(state: UserChangeState): UserChangeState | null {
+  const note = state.note?.trim() ? state.note : undefined;
+  const normalized = {
+    dismissed: state.dismissed || undefined,
+    saved: state.saved || undefined,
+    note,
+  } satisfies UserChangeState;
+  return normalized.dismissed || normalized.saved || normalized.note ? normalized : null;
+}
+
+function profileLabel(profile: ProfileName) {
+  if (profile === "dev") {
+    return "Dev";
+  }
+  if (profile === "games") {
+    return "Games";
+  }
+  return profile;
 }
 
 function dateValue(value: string) {
@@ -102,7 +157,7 @@ function windowLabel(value: FeedWindow) {
   return feedWindows.find((item) => item.value === value)?.label ?? value;
 }
 
-function sortedChanges(changes: Change[], sort: SortKey) {
+function sortedChanges<T extends Change>(changes: T[], sort: SortKey) {
   const copy = [...changes];
   if (sort === "oldest") {
     return copy.sort((left, right) => compareDate(left.published_at, right.published_at));
@@ -134,27 +189,62 @@ function RenderedText({ value }: { value: string }) {
 export default function App() {
   const [changes, setChanges] = useState<Change[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([
+    { name: "dev", source_count: 0 },
+    { name: "games", source_count: 0 },
+  ]);
+  const [selectedProfile, setSelectedProfile] = useState<ProfileName>(readSelectedProfile);
   const [sort, setSort] = useState<SortKey>("newest");
   const [feedWindow, setFeedWindow] = useState<FeedWindow>("7d");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>(null);
   const [openNotes, setOpenNotes] = useState<Record<number, boolean>>({});
-  const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
-  const [dismissedCount, setDismissedCount] = useState(0);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [userState, setUserState] = useState<UserStateByChange>(readUserState);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(userStateStorageKey, JSON.stringify(userState));
+    } catch {
+      setError("Could not persist browser state in localStorage.");
+    }
+  }, [userState]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(selectedProfileStorageKey, selectedProfile);
+    } catch {
+      setError("Could not persist selected profile in localStorage.");
+    }
+  }, [selectedProfile]);
+
+  useEffect(() => {
+    fetchProfiles()
+      .then((loaded) => {
+        const byName = new Map<ProfileName, Profile>();
+        for (const profile of loaded) {
+          byName.set(profile.name, profile);
+        }
+        byName.set("dev", byName.get("dev") ?? { name: "dev", source_count: 0 });
+        byName.set("games", byName.get("games") ?? { name: "games", source_count: 0 });
+        const ordered = ["dev", "games", ...loaded.map((profile) => profile.name).filter((name) => name !== "dev" && name !== "games")];
+        setProfiles(ordered.map((name) => byName.get(name)).filter((profile): profile is Profile => Boolean(profile)));
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unknown error"));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     setIsLoading(true);
     setError(null);
-    Promise.all([fetchChanges(feedWindow), fetchChanges(feedWindow, true)])
-      .then(([loaded, allLoaded]) => {
+    fetchChanges(feedWindow, selectedProfile)
+      .then((loaded) => {
         if (cancelled) {
           return;
         }
         setChanges(loaded);
-        setDismissedCount(allLoaded.filter((change) => change.dismissed).length);
-        setNoteDrafts(Object.fromEntries(loaded.map((change) => [change.id, change.note])));
+        setNoteDrafts(Object.fromEntries(loaded.map((change) => [changeKey(change), userState[changeKey(change)]?.note ?? ""])));
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -170,58 +260,64 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [feedWindow]);
+  }, [feedWindow, selectedProfile]);
 
+  const viewChanges: ViewChange[] = changes.map((change) => {
+    const key = changeKey(change);
+    const state = userState[key] ?? {};
+    return {
+      ...change,
+      change_key: key,
+      dismissed: Boolean(state.dismissed),
+      saved: Boolean(state.saved),
+      note: state.note ?? "",
+    };
+  });
+
+  const dismissedCount = viewChanges.filter((change) => change.dismissed).length;
   const savedChanges = sortedChanges(
-    changes.filter((change) => change.saved),
+    viewChanges.filter((change) => change.saved),
     "saved",
   );
   const feedChanges = sortedChanges(
-    changes.filter((change) => !change.saved && (sourceFilter === null || change.source_id === sourceFilter.id)),
+    viewChanges.filter((change) => !change.dismissed && !change.saved && (sourceFilter === null || change.source_id === sourceFilter.id)),
     sort,
   );
-  const sourceCount = new Set(changes.map((change) => change.source_id)).size;
+  const sourceCount = new Set(viewChanges.map((change) => change.source_id)).size;
 
-  function replaceChange(updated: Change) {
-    setChanges((current) => current.map((change) => (change.id === updated.id ? updated : change)).filter((change) => !change.dismissed));
-    setNoteDrafts((current) => ({ ...current, [updated.id]: updated.note }));
-  }
-
-  async function onDismiss(change: Change) {
-    setError(null);
-    setChanges((current) => current.filter((item) => item.id !== change.id));
-    setDismissedCount((current) => current + 1);
-    try {
-      await updateChange(change.id, { dismissed: true });
-    } catch (cause) {
-      setChanges((current) => (current.some((item) => item.id === change.id) ? current : [...current, change]));
-      setDismissedCount((current) => Math.max(0, current - 1));
-      setError(cause instanceof Error ? cause.message : "Unknown error");
-    }
-  }
-
-  async function onToggleSaved(change: Change) {
-    setError(null);
-    try {
-      const nextSaved = !change.saved;
-      const updated = await updateChange(change.id, nextSaved ? { saved: true } : { saved: false, note: "" });
-      replaceChange(updated);
-      if (!nextSaved) {
-        setOpenNotes((current) => ({ ...current, [change.id]: false }));
+  function updateLocalChangeState(change: ViewChange, patch: UserChangeState) {
+    setUserState((current) => {
+      const currentState = current[change.change_key] ?? {};
+      const nextState = normalizeState({ ...currentState, ...patch });
+      const next = { ...current };
+      if (nextState) {
+        next[change.change_key] = nextState;
+      } else {
+        delete next[change.change_key];
       }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unknown error");
+      return next;
+    });
+  }
+
+  function onDismiss(change: ViewChange) {
+    setError(null);
+    updateLocalChangeState(change, { dismissed: true });
+  }
+
+  function onToggleSaved(change: ViewChange) {
+    setError(null);
+    const nextSaved = !change.saved;
+    updateLocalChangeState(change, nextSaved ? { saved: true } : { saved: false, note: "" });
+    if (!nextSaved) {
+      setOpenNotes((current) => ({ ...current, [change.id]: false }));
+      setNoteDrafts((current) => ({ ...current, [change.change_key]: "" }));
     }
   }
 
-  async function onSaveNote(change: Change) {
+  function onSaveNote(change: ViewChange) {
     setError(null);
-    try {
-      replaceChange(await updateChange(change.id, { saved: true, note: noteDrafts[change.id] ?? "" }));
-      setOpenNotes((current) => ({ ...current, [change.id]: false }));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unknown error");
-    }
+    updateLocalChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? "" });
+    setOpenNotes((current) => ({ ...current, [change.id]: false }));
   }
 
   return (
@@ -236,7 +332,13 @@ export default function App() {
           onClearSourceFilter={() => setSourceFilter(null)}
           onFeedWindowChange={setFeedWindow}
           onSortChange={setSort}
+          onProfileChange={(profile) => {
+            setSelectedProfile(profile);
+            setSourceFilter(null);
+          }}
+          profiles={profiles}
           savedCount={savedChanges.length}
+          selectedProfile={selectedProfile}
           sourceFilter={sourceFilter}
           sort={sort}
           sourceCount={sourceCount}
@@ -252,7 +354,7 @@ export default function App() {
             onSaveNote={onSaveNote}
             onSourceFilter={(change) => setSourceFilter({ id: change.source_id, name: change.source_name })}
             onToggleNote={(changeId) => setOpenNotes((current) => ({ ...current, [changeId]: !(current[changeId] ?? false) }))}
-            onUpdateDraft={(changeId, value) => setNoteDrafts((current) => ({ ...current, [changeId]: value }))}
+            onUpdateDraft={(changeKey, value) => setNoteDrafts((current) => ({ ...current, [changeKey]: value }))}
             savedChanges={savedChanges}
           />
 
@@ -266,7 +368,7 @@ export default function App() {
                 <h2 className="font-serif text-3xl font-black leading-none tracking-tight text-stone-950 sm:text-4xl">The current edition</h2>
               </div>
               <p className="max-w-md text-sm leading-6 text-stone-600">
-                {feedChanges.length} readable item{feedChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Dismissions vanish from this desk immediately.
+                {feedChanges.length} readable {profileLabel(selectedProfile)} item{feedChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Dismissals are saved in this browser.
               </p>
             </div>
 
@@ -280,7 +382,7 @@ export default function App() {
               onSourceFilter={(change) => setSourceFilter({ id: change.source_id, name: change.source_name })}
               onToggleNote={(changeId) => setOpenNotes((current) => ({ ...current, [changeId]: !(current[changeId] ?? false) }))}
               onToggleSaved={onToggleSaved}
-              onUpdateDraft={(changeId, value) => setNoteDrafts((current) => ({ ...current, [changeId]: value }))}
+              onUpdateDraft={(changeKey, value) => setNoteDrafts((current) => ({ ...current, [changeKey]: value }))}
             />
           </section>
         </div>
@@ -295,8 +397,11 @@ function ControlPanel({
   feedWindow,
   onClearSourceFilter,
   onFeedWindowChange,
+  onProfileChange,
   onSortChange,
+  profiles,
   savedCount,
+  selectedProfile,
   sourceFilter,
   sort,
   sourceCount,
@@ -306,8 +411,11 @@ function ControlPanel({
   feedWindow: FeedWindow;
   onClearSourceFilter: () => void;
   onFeedWindowChange: (value: FeedWindow) => void;
+  onProfileChange: (value: ProfileName) => void;
   onSortChange: (value: SortKey) => void;
+  profiles: Profile[];
   savedCount: number;
+  selectedProfile: ProfileName;
   sourceFilter: SourceFilter;
   sort: SortKey;
   sourceCount: number;
@@ -331,6 +439,24 @@ function ControlPanel({
         </div>
 
         <div className="space-y-4 p-5 sm:p-6">
+          <label className="block">
+            <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
+              <Inbox className="h-4 w-4" />
+              Profile
+            </span>
+            <select
+              className="h-11 w-full rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-3 text-sm font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d]"
+              value={selectedProfile}
+              onChange={(event) => onProfileChange(event.target.value)}
+            >
+              {profiles.map((profile) => (
+                <option key={profile.name} value={profile.name}>
+                  {profileLabel(profile.name)} - {profile.source_count} source{profile.source_count === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          </label>
+
           {sourceFilter ? (
             <div className="rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3">
               <div className="text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#b8af9d]">Source filter</div>
@@ -414,14 +540,14 @@ function SavedSection({
   onUpdateDraft,
   savedChanges,
 }: {
-  noteDrafts: Record<number, string>;
-  onRemoveSaved: (change: Change) => void;
+  noteDrafts: Record<string, string>;
   openNotes: Record<number, boolean>;
-  onSaveNote: (change: Change) => void;
-  onSourceFilter: (change: Change) => void;
+  onRemoveSaved: (change: ViewChange) => void;
+  onSaveNote: (change: ViewChange) => void;
+  onSourceFilter: (change: ViewChange) => void;
   onToggleNote: (changeId: number) => void;
-  onUpdateDraft: (changeId: number, value: string) => void;
-  savedChanges: Change[];
+  onUpdateDraft: (changeKey: string, value: string) => void;
+  savedChanges: ViewChange[];
 }) {
   return (
     <section className="rounded-[2rem] border border-amber-900/30 bg-[#f9d978] p-4 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)]">
@@ -446,13 +572,13 @@ function SavedSection({
             <SavedCard
               change={change}
               key={change.id}
-              noteDraft={noteDrafts[change.id] ?? ""}
+              noteDraft={noteDrafts[change.change_key] ?? ""}
               noteOpen={openNotes[change.id] ?? false}
               onRemoveSaved={onRemoveSaved}
               onSaveNote={onSaveNote}
               onSourceFilter={onSourceFilter}
               onToggleNote={() => onToggleNote(change.id)}
-              onUpdateDraft={(value) => onUpdateDraft(change.id, value)}
+              onUpdateDraft={(value) => onUpdateDraft(change.change_key, value)}
             />
           ))}
         </div>
@@ -471,12 +597,12 @@ function SavedCard({
   onToggleNote,
   onUpdateDraft,
 }: {
-  change: Change;
+  change: ViewChange;
   noteDraft: string;
   noteOpen: boolean;
-  onRemoveSaved: (change: Change) => void;
-  onSaveNote: (change: Change) => void;
-  onSourceFilter: (change: Change) => void;
+  onRemoveSaved: (change: ViewChange) => void;
+  onSaveNote: (change: ViewChange) => void;
+  onSourceFilter: (change: ViewChange) => void;
   onToggleNote: () => void;
   onUpdateDraft: (value: string) => void;
 }) {
@@ -540,16 +666,16 @@ function FeedBody({
   onToggleSaved,
   onUpdateDraft,
 }: {
-  changes: Change[];
+  changes: ViewChange[];
   isLoading: boolean;
-  noteDrafts: Record<number, string>;
+  noteDrafts: Record<string, string>;
   openNotes: Record<number, boolean>;
-  onDismiss: (change: Change) => void;
-  onSaveNote: (change: Change) => void;
-  onSourceFilter: (change: Change) => void;
+  onDismiss: (change: ViewChange) => void;
+  onSaveNote: (change: ViewChange) => void;
+  onSourceFilter: (change: ViewChange) => void;
   onToggleNote: (changeId: number) => void;
-  onToggleSaved: (change: Change) => void;
-  onUpdateDraft: (changeId: number, value: string) => void;
+  onToggleSaved: (change: ViewChange) => void;
+  onUpdateDraft: (changeKey: string, value: string) => void;
 }) {
   if (isLoading) {
     return <LoadingState />;
@@ -565,14 +691,14 @@ function FeedBody({
         <ChangeCard
           change={change}
           key={change.id}
-          noteDraft={noteDrafts[change.id] ?? ""}
+          noteDraft={noteDrafts[change.change_key] ?? ""}
           noteOpen={openNotes[change.id] ?? false}
           onDismiss={onDismiss}
           onSaveNote={onSaveNote}
           onSourceFilter={onSourceFilter}
           onToggleNote={() => onToggleNote(change.id)}
           onToggleSaved={onToggleSaved}
-          onUpdateDraft={(value) => onUpdateDraft(change.id, value)}
+          onUpdateDraft={(value) => onUpdateDraft(change.change_key, value)}
         />
       ))}
     </div>
@@ -618,14 +744,14 @@ function ChangeCard({
   onToggleSaved,
   onUpdateDraft,
 }: {
-  change: Change;
+  change: ViewChange;
   noteDraft: string;
   noteOpen: boolean;
-  onDismiss: (change: Change) => void;
-  onSaveNote: (change: Change) => void;
-  onSourceFilter: (change: Change) => void;
+  onDismiss: (change: ViewChange) => void;
+  onSaveNote: (change: ViewChange) => void;
+  onSourceFilter: (change: ViewChange) => void;
   onToggleNote: () => void;
-  onToggleSaved: (change: Change) => void;
+  onToggleSaved: (change: ViewChange) => void;
   onUpdateDraft: (value: string) => void;
 }) {
   const preview = change.content || change.summary;

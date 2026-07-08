@@ -61,6 +61,17 @@ uv run changelorg sources add "Gemini and Gemma on Google Developers Blog" --plu
 uv run changelorg sources add-rss "Google Gen AI Python SDK Releases" "https://github.com/googleapis/python-genai/releases.atom"
 ```
 
+## Games Profile Sources
+
+These sources are seeded under the `games` profile.
+
+| Topic | Source | URL | Notes |
+| --- | --- | --- | --- |
+| Steam | Steam News | `https://store.steampowered.com/feeds/news.xml?cc=US&l=english` | Broad Steam news. |
+| Minecraft | Minecraft RSS | `https://www.minecraft.net/en-us/feeds/community-content/rss` | Official Minecraft posts and preview notes. |
+| THE FINALS | Steam app news | `https://store.steampowered.com/feeds/news/app/2073850/?cc=US&l=english` | Official Steam news for THE FINALS. |
+| ARC Raiders | Steam app news | `https://store.steampowered.com/feeds/news/app/1808500/?cc=US&l=english` | Official Steam news for ARC Raiders. |
+
 ## Better Future Plugins
 
 These are valuable sources but are not RSS/Atom feeds, so they should get dedicated scraper plugins.

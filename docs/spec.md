@@ -17,11 +17,16 @@ Required fields:
 - `config`: Plugin-specific JSON object.
 - `enabled`: Disabled sources are skipped during generation.
 
+Common config fields:
+
+- `profile`: Subscription profile/category. Defaults to `dev` when omitted.
+
 Behavior:
 
 - Sources are stored in SQLite.
 - Deleting a source deletes its cached changes.
 - Source IDs are stable within the local database.
+- Seeded sources currently use `dev` and `games` profiles.
 
 ### Change
 
@@ -39,9 +44,6 @@ Optional fields:
 - `summary`
 - `content`
 - `metadata`
-- `dismissed`
-- `saved`
-- `note`
 
 Behavior:
 
@@ -49,8 +51,7 @@ Behavior:
 - Changes dedupe by `(source_id, external_id)`.
 - If a plugin does not provide `external_id`, changelorg derives one from source ID, URL, title, and publication time.
 - Re-fetching a known change updates its title, URL, text, publication time, fetched time, and metadata.
-- Re-fetching a known change does not overwrite dismissed, saved, or note state.
-- Dismissed changes are hidden from normal feed responses by default.
+- Backend responses may include legacy `dismissed`, `saved`, and `note` fields for API compatibility, but the web UI treats user-specific state as browser-local data.
 
 ## Time Windows
 
@@ -174,6 +175,7 @@ Routes:
 - `GET /health`
 - `GET /plugins`
 - `GET /sources`
+- `GET /profiles`
 - `POST /sources`
 - `GET /sources/{source_id}`
 - `PATCH /sources/{source_id}`
@@ -190,6 +192,8 @@ Behavior:
 - `GET /changes` reads cached changes only.
 - `GET /changes` hides dismissed changes unless `include_dismissed=true` is provided.
 - `GET /changes?saved=true` returns saved changes only.
+- `GET /changes?profile=dev` filters to enabled sources in the `dev` profile.
+- `GET /changes?profile=games` filters to enabled sources in the `games` profile.
 - `PATCH /changes/{change_id}` updates `dismissed`, `saved`, and/or `note`.
 
 ## Frontend Behavior
@@ -199,7 +203,8 @@ The first frontend is intentionally minimal.
 Behavior:
 
 - Loads cached changes from the backend.
-- Can request generation for the last 7 days.
+- Lets the user switch source profiles, starting with `dev` and `games`.
+- Reads the backend cache, which is refreshed hourly by the server.
 - Renders HTML and Markdown safely in card previews.
 - Renders changes as card-style items with source, publication time, title, summary/content preview, and link.
 - Supports sorting by newest, oldest, source, and saved-first.
@@ -207,6 +212,8 @@ Behavior:
 - Supports saving entries for later.
 - Shows saved entries in a notes section at the top.
 - The note-for-later control includes an arrow that expands a text box for annotating the saved entry.
+- Dismissed, saved, and note state is persisted in browser `localStorage`, not the backend.
+- Backend-generated feed data is shared; browser-specific reading state stays private to that browser/profile.
 - Shows an empty state when no changes are cached.
 
 ## Non-Goals For This Version

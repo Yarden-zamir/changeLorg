@@ -34,6 +34,33 @@ def test_source_and_change_roundtrip(tmp_path) -> None:
     assert sources[0].name == "GitHub Blog"
     assert changes[0].title == "A change"
     assert changes[0].source_name == "GitHub Blog"
+    assert changes[0].source_profile == "dev"
+
+
+def test_change_inherits_source_profile_from_config(tmp_path) -> None:
+    db_path = tmp_path / "changelorg.db"
+    source = add_source(SourceCreate(name="Steam", config={"profile": "games", "url": "https://example.com/feed.xml"}), db_path)
+    upsert_changes(
+        source.id,
+        [ChangeInput(external_id="item-1", title="A game update", published_at=datetime(2026, 7, 4, 10, tzinfo=timezone.utc))],
+        db_path,
+    )
+
+    changes = list_changes(db_path=db_path)
+
+    assert changes[0].source_profile == "games"
+
+
+def test_empty_source_filter_returns_no_changes(tmp_path) -> None:
+    db_path = tmp_path / "changelorg.db"
+    source = add_source(SourceCreate(name="Feed", config={"url": "https://example.com/feed.xml"}), db_path)
+    upsert_changes(
+        source.id,
+        [ChangeInput(external_id="item-1", title="A change", published_at=datetime(2026, 7, 4, 10, tzinfo=timezone.utc))],
+        db_path,
+    )
+
+    assert list_changes(source_ids=[], db_path=db_path) == []
 
 
 def test_upsert_changes_deduplicates_by_external_id(tmp_path) -> None:
