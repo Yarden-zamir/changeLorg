@@ -1,3 +1,7 @@
-changelorg.yarden-zamir.com {
+{% if environment == "prod" -%}
+changelorg.yarden-zamir.com
+{%- else -%}
+pr.{{ environment.removeprefix("pr-") }}.changelorg.yarden-zamir.com
+{%- endif %} {
     reverse_proxy unix//{{ paths.default_socket }}
 }

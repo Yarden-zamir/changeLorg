@@ -9,6 +9,7 @@ This repository is a KitSHn recipe for deploying changelorg to `changelorg.yarde
 - Sources are seeded on startup when missing.
 - The backend refresh loop runs every hour with `CHANGELORG_REFRESH_WINDOW=30d`.
 - Manual public generation is disabled unless `CHANGELORG_MANUAL_GENERATE_API=true` is set.
+- PR previews deploy to `pr.<number>.changelorg.yarden-zamir.com`.
 
 ## Files
 

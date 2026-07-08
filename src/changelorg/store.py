@@ -113,10 +113,20 @@ def _change_from_row(row: sqlite3.Row) -> Change:
     metadata = json.loads(raw_metadata) if raw_metadata else {}
     if not isinstance(metadata, dict):
         raise ValueError(f"change {row['id']} metadata is not an object")
+    source_profile = "dev"
+    if "source_config" in row.keys():
+        raw_source_config = row["source_config"]
+        source_config = json.loads(raw_source_config) if raw_source_config else {}
+        if not isinstance(source_config, dict):
+            raise ValueError(f"source {row['source_id']} config is not an object")
+        configured_profile = source_config.get("profile", "dev")
+        if isinstance(configured_profile, str) and configured_profile.strip():
+            source_profile = configured_profile.strip()
     return Change(
         id=row["id"],
         source_id=row["source_id"],
         source_name=row["source_name"],
+        source_profile=source_profile,
         plugin=row["plugin"],
         external_id=row["external_id"],
         title=row["title"],
@@ -260,10 +270,13 @@ def list_changes(
         clauses.append("changes.published_at >= ? AND changes.published_at <= ?")
         params.extend([_dt(window.start), _dt(window.end)])
 
-    if source_ids:
-        placeholders = ",".join("?" for _ in source_ids)
-        clauses.append(f"changes.source_id IN ({placeholders})")
-        params.extend(source_ids)
+    if source_ids is not None:
+        if not source_ids:
+            clauses.append("1 = 0")
+        else:
+            placeholders = ",".join("?" for _ in source_ids)
+            clauses.append(f"changes.source_id IN ({placeholders})")
+            params.extend(source_ids)
 
     if not include_dismissed:
         clauses.append("changes.dismissed = 0")
@@ -276,6 +289,7 @@ def list_changes(
         SELECT
             changes.*,
             sources.name AS source_name,
+            sources.config AS source_config,
             sources.plugin AS plugin
         FROM changes
         JOIN sources ON sources.id = changes.source_id
@@ -324,6 +338,7 @@ def get_change(change_id: int, db_path: Path | None = None) -> Change:
         SELECT
             changes.*,
             sources.name AS source_name,
+            sources.config AS source_config,
             sources.plugin AS plugin
         FROM changes
         JOIN sources ON sources.id = changes.source_id

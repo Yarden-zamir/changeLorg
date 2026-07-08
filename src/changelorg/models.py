@@ -78,6 +78,7 @@ class Change(ChangeInput):
     id: int
     source_id: int
     source_name: str
+    source_profile: str = "dev"
     plugin: str
     fetched_at: datetime
     dismissed: bool = False
