@@ -32,15 +32,11 @@ services:
       - ${KITSHN_SOCKET_DIR}:${KITSHN_SOCKET_DIR}
     networks:
       - default
-      - kitshn-edge
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "test", "-S", "${KITSHN_DEFAULT_SOCKET}"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-networks:
-  kitshn-edge:
-    external: true
