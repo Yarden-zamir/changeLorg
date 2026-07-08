@@ -81,7 +81,7 @@ const sortOptions: Array<{ value: SortKey; label: string }> = [
   { value: "newest", label: "Newest first" },
   { value: "oldest", label: "Oldest first" },
   { value: "source", label: "Group by source" },
-  { value: "saved", label: "Saved first" },
+  { value: "saved", label: "Shelf first" },
 ];
 
 async function fetchChanges(feedWindow: FeedWindow, profile: ProfileName): Promise<Change[]> {
@@ -431,12 +431,12 @@ export default function App() {
               <div>
                 <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.28em] text-stone-500">
                   <Newspaper className="h-4 w-4" />
-                  Main feed
+                  The desk
                 </div>
-                <h2 className="font-serif text-3xl font-black leading-none tracking-tight text-stone-950 sm:text-4xl">The current edition</h2>
+                <h2 className="font-serif text-3xl font-black leading-none tracking-tight text-stone-950 sm:text-4xl">Today&apos;s papers</h2>
               </div>
               <p className="max-w-md text-sm leading-6 text-stone-600">
-                {feedChanges.length} readable {profileLabel(selectedProfile)} item{feedChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Dismissals are saved in this browser.
+                {feedChanges.length} readable {profileLabel(selectedProfile)} item{feedChanges.length === 1 ? "" : "s"} on the desk from the last {windowLabel(feedWindow)}. Desk state stays in this browser.
               </p>
             </div>
 
@@ -495,15 +495,15 @@ function ControlPanel({
           <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Local changelog desk</Badge>
           <h1 className="mt-5 font-serif text-5xl font-black leading-[0.9] tracking-tight sm:text-6xl lg:text-5xl">change<br />lorg</h1>
           <p className="mt-4 text-sm leading-6 text-[#d7d0c0]">
-            A compact research inbox for release notes, product updates, and the bits worth saving before they disappear into tabs.
+            A compact research desk for release notes, product updates, and the bits worth shelving before they disappear into tabs.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-px border-b border-[#fff8e8]/15 bg-[#fff8e8]/15 text-center">
-          <DeskStat label="queue" value={queueCount} />
+          <DeskStat label="desk" value={queueCount} />
           <DeskStat label="sources" value={sourceCount} />
-          <DeskStat label="saved" value={savedCount} />
-          <DeskStat label="dismissed" value={dismissedCount} />
+          <DeskStat label="shelf" value={savedCount} />
+          <DeskStat label="cleared" value={dismissedCount} />
         </div>
 
         <div className="space-y-4 p-5 sm:p-6">
@@ -623,16 +623,16 @@ function SavedSection({
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-amber-950/65">
             <BookmarkCheck className="h-4 w-4" />
-            Saved notes
+            The shelf
           </div>
-          <h2 className="font-serif text-2xl font-black leading-none tracking-tight sm:text-3xl">Pinned for later</h2>
+          <h2 className="font-serif text-2xl font-black leading-none tracking-tight sm:text-3xl">Shelved for later</h2>
         </div>
-        <Badge className="w-fit border-amber-950/20 bg-amber-950 text-amber-50">{savedChanges.length} saved</Badge>
+        <Badge className="w-fit border-amber-950/20 bg-amber-950 text-amber-50">{savedChanges.length} shelved</Badge>
       </div>
 
       {savedChanges.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-amber-950/35 bg-amber-50/35 p-4 text-sm font-medium leading-6 text-amber-950/75">
-          Save a change or add a note and it will stay parked here, above the noise, until you remove it.
+          Shelf a newspaper or add a note and it will stay here, above the desk noise, until you put it back on the desk.
         </div>
       ) : (
         <div className="mt-4 grid gap-3 xl:grid-cols-2">
@@ -696,7 +696,7 @@ function SavedCard({
             />
             <div className="mt-2 flex justify-end">
               <Button className="rounded-xl bg-amber-950 text-amber-50 hover:bg-amber-900" onClick={() => onSaveNote(change)}>
-                Save note
+                Shelf note
               </Button>
             </div>
           </div>
@@ -713,7 +713,7 @@ function SavedCard({
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${noteOpen ? "rotate-180" : ""}`} />
           </button>
           <button className="inline-flex items-center gap-1 text-sm font-black text-amber-950 underline decoration-amber-800/40 underline-offset-4" onClick={() => onRemoveSaved(change)} type="button">
-            Remove
+            Back to desk
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -838,7 +838,7 @@ function ChangeCard({
             >
               {change.source_name}
             </button>
-            {change.saved ? <Badge className="border-amber-900/25 bg-amber-200 text-amber-950">Saved</Badge> : null}
+            {change.saved ? <Badge className="border-amber-900/25 bg-amber-200 text-amber-950">Shelved</Badge> : null}
             <span className="inline-flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5" />
               {formatDate(change.published_at)}
@@ -862,7 +862,7 @@ function ChangeCard({
               <FileText className="h-4 w-4" />
               Actions
             </div>
-            <p className="leading-5">Open, save, annotate, or dismiss.</p>
+            <p className="leading-5">Open, shelf, annotate, or clear from the desk.</p>
           </div>
 
           <div className="mt-4 grid gap-2">
@@ -875,7 +875,7 @@ function ChangeCard({
             <div className="grid grid-cols-[1fr_auto] gap-2">
               <Button className="rounded-xl bg-white text-stone-950 hover:bg-amber-100" onClick={() => onToggleSaved(change)} variant="secondary">
                 {change.saved ? <BookmarkCheck className="mr-2 h-4 w-4" /> : <BookmarkPlus className="mr-2 h-4 w-4" />}
-                {change.saved ? "Saved" : "Save"}
+                {change.saved ? "Shelved" : "Shelf"}
               </Button>
               <Button
                 aria-controls={noteId}
@@ -890,7 +890,7 @@ function ChangeCard({
             </div>
             <Button className="rounded-xl bg-transparent text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8]" onClick={() => onDismiss(change)} variant="secondary">
               <X className="mr-2 h-4 w-4" />
-              Dismiss
+              Clear from desk
             </Button>
           </div>
         </div>
@@ -900,7 +900,7 @@ function ChangeCard({
         <div className="border-t border-stone-950 bg-[#fff8e8] p-4 sm:p-5" id={noteId}>
           <label className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.18em] text-stone-600" htmlFor={`${noteId}-textarea`}>
             <BookmarkPlus className="h-4 w-4" />
-            Note for later
+            Shelf note
           </label>
           <textarea
             className="mt-3 min-h-28 w-full rounded-2xl border border-stone-950/20 bg-white p-4 text-sm leading-6 text-stone-950 shadow-inner outline-none transition focus:border-stone-950"
@@ -910,9 +910,9 @@ function ChangeCard({
             value={noteDraft}
           />
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs font-medium text-stone-500">Saving a note also pins this item to the top section.</p>
+            <p className="text-xs font-medium text-stone-500">Shelving a note also moves this item to the shelf.</p>
             <Button className="rounded-xl bg-stone-950 text-[#fff8e8] hover:bg-stone-800" onClick={() => onSaveNote(change)}>
-              Save note
+              Shelf note
             </Button>
           </div>
         </div>
