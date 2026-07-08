@@ -197,6 +197,22 @@ def test_enrichment_compacts_overloaded_content() -> None:
     assert enriched.summary == "- Fix number 0 with a long enough explanation to trigger compaction\n- Fix number 1 with a long enough explanation to trigger compaction"
 
 
+def test_enrichment_compacts_rich_content_when_summary_is_empty() -> None:
+    profile = enrichment_profile("compact", max_items=2)
+
+    enriched = enrich_change(
+        title="Store Update",
+        summary="",
+        content="<p>Welcome to the update.</p><ul><li>New cosmetics are available.</li></ul>",
+        url="https://example.com/news/store-update",
+        feed_title="Game News",
+        profile=profile,
+    )
+
+    assert enriched.summary == "Welcome to the update.\n- New cosmetics are available."
+    assert enriched.content == ""
+
+
 def test_enrichment_compacts_version_only_categorized_release_notes() -> None:
     body = """
     <h2>Core</h2>

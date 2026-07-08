@@ -72,6 +72,11 @@ PROFILES = {
         max_items=8,
         drop_phrases=("Share this story", "Community Creations", "News"),
     ),
+    "official-game-news": enrichment_profile(
+        "official-game-news",
+        max_items=8,
+        drop_phrases=("Back to Top", "Buy now", "Cookie Settings", "Privacy Policy"),
+    ),
     "raycast-changelog": enrichment_profile("raycast-changelog", max_items=7),
     "status-feed": enrichment_profile("status-feed", compress_overloaded=False),
 }
@@ -87,6 +92,8 @@ URL_PROFILE_HINTS = {
     "blog.jetbrains.com/idea/feed/": "linked-release-notes",
     "raycast.com/changelog/feed.xml": "raycast-changelog",
     "githubstatus.com/history.rss": "status-feed",
+    "reachthefinals.com/patchnotes?format=rss": "official-game-news",
+    "arcraiders.com/news": "official-game-news",
 }
 
 
@@ -297,7 +304,7 @@ def enrich_change(
 
     display_summary = summary
     display_content = content
-    if linked_body or "version_only_title" in flags or "overloaded_content" in flags or "html_boilerplate" in flags or "generic_summary" in flags:
+    if linked_body or "version_only_title" in flags or "overloaded_content" in flags or "html_boilerplate" in flags or "generic_summary" in flags or ("thin_summary" in flags and content):
         compact = compact_blocks(body, profile)
         if compact:
             display_summary = compact

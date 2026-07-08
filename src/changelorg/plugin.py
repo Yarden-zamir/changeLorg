@@ -97,9 +97,10 @@ def load_local_plugins(directories: list[Path] | None = None) -> list[SourcePlug
 
 
 def default_plugin_manager() -> PluginManager:
+    from changelorg.plugins.html_news import HtmlNewsPlugin
     from changelorg.plugins.rss_atom import RssAtomPlugin
 
-    manager = PluginManager([RssAtomPlugin()])
+    manager = PluginManager([RssAtomPlugin(), HtmlNewsPlugin()])
     for plugin in load_local_plugins():
         manager.register(plugin)
     return manager
