@@ -1,0 +1,46 @@
+services:
+  app:
+    build: .
+    environment:
+      KITSHN_RECIPE: ${KITSHN_RECIPE}
+      KITSHN_ENVIRONMENT: ${KITSHN_ENVIRONMENT}
+      KITSHN_DEPLOYMENT: ${KITSHN_DEPLOYMENT}
+      KITSHN_DATA_DIR: ${KITSHN_DATA_DIR}
+      KITSHN_LOG_DIR: ${KITSHN_LOG_DIR}
+      KITSHN_SOCKET_DIR: ${KITSHN_SOCKET_DIR}
+      KITSHN_DEFAULT_SOCKET: ${KITSHN_DEFAULT_SOCKET}
+      CHANGELORG_DATA_DIR: /data
+      CHANGELORG_AUTO_REFRESH: "true"
+      CHANGELORG_REFRESH_INTERVAL_SECONDS: "3600"
+      CHANGELORG_REFRESH_WINDOW: "30d"
+      CHANGELORG_SEED_DEFAULT_SOURCES: "true"
+    volumes:
+      - ${KITSHN_DATA_DIR}/data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  socket-proxy:
+    image: alpine/socat:latest
+    pull_policy: always
+    command: ["UNIX-LISTEN:${KITSHN_DEFAULT_SOCKET},fork,unlink-early,mode=666", "TCP:app:8000"]
+    volumes:
+      - ${KITSHN_SOCKET_DIR}:${KITSHN_SOCKET_DIR}
+    networks:
+      - default
+      - kitshn-edge
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD", "test", "-S", "${KITSHN_DEFAULT_SOCKET}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  kitshn-edge:
+    external: true

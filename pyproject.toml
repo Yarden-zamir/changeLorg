@@ -1,0 +1,31 @@
+[project]
+name = "changelorg"
+version = "0.1.0"
+description = "Local-first changelog and news feed tracker with a plugin-driven CLI and API."
+readme = "README.md"
+authors = [
+    { name = "Yarden Zamir", email = "dev@yarden-zamir.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.139.0",
+    "feedparser>=6.0.12",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+    "typer>=0.26.8",
+    "uvicorn>=0.50.0",
+]
+license = "MIT"
+
+[project.scripts]
+changelorg = "changelorg.cli:app"
+changelorg-api = "changelorg.api:run"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12.0"]
+build-backend = "uv_build"
