@@ -205,6 +205,9 @@ Behavior:
 - Loads cached changes from the backend.
 - Lets the user switch source profiles, starting with `dev` and `games`.
 - Reads the backend cache, which is refreshed hourly by the server.
+- Treats URL query parameters as the source of truth for visible feed selections.
+- Writes selected profile, time window, sort order, and source filter to the URL immediately.
+- Reads those query parameters on page load and browser back/forward navigation.
 - Renders HTML and Markdown safely in card previews.
 - Renders changes as card-style items with source, publication time, title, summary/content preview, and link.
 - Supports sorting by newest, oldest, source, and saved-first.
@@ -215,6 +218,14 @@ Behavior:
 - Dismissed, saved, and note state is persisted in browser `localStorage`, not the backend.
 - Backend-generated feed data is shared; browser-specific reading state stays private to that browser/profile.
 - Shows an empty state when no changes are cached.
+
+Query parameters:
+
+- `profile`: Source profile, such as `dev` or `games`.
+- `since`: Feed window, one of `24h`, `7d`, `30d`, `90d`, or `365d`.
+- `sort`: Feed sort, one of `newest`, `oldest`, `source`, or `saved`.
+- `source`: Optional numeric source ID filter.
+- `sourceName`: Optional display name for the active source filter.
 
 ## Non-Goals For This Version
 

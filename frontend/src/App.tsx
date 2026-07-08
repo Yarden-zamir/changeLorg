@@ -48,13 +48,26 @@ type FeedWindow = "24h" | "7d" | "30d" | "90d" | "365d";
 type ProfileName = "dev" | "games" | string;
 type SourceFilter = { id: number; name: string } | null;
 type Profile = { name: ProfileName; source_count: number };
+type UrlState = {
+  profile: ProfileName;
+  feedWindow: FeedWindow;
+  sort: SortKey;
+  sourceId: number | null;
+  sourceName: string | null;
+};
 type ViewChange = Change & {
   change_key: string;
 };
 
 const apiUrl = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 const userStateStorageKey = "changelorg:user-state:v1";
-const selectedProfileStorageKey = "changelorg:selected-profile:v1";
+const defaultUrlState: UrlState = {
+  profile: "dev",
+  feedWindow: "7d",
+  sort: "newest",
+  sourceId: null,
+  sourceName: null,
+};
 
 const feedWindows: Array<{ value: FeedWindow; label: string; caption: string }> = [
   { value: "24h", label: "24 hours", caption: "Today" },
@@ -100,16 +113,58 @@ function readUserState(): UserStateByChange {
   }
 }
 
-function readSelectedProfile(): ProfileName {
-  try {
-    return localStorage.getItem(selectedProfileStorageKey) || "dev";
-  } catch {
-    return "dev";
-  }
-}
-
 function changeKey(change: Change) {
   return `${change.source_id}:${change.external_id || change.url || change.title}`;
+}
+
+function isFeedWindow(value: string | null): value is FeedWindow {
+  return feedWindows.some((item) => item.value === value);
+}
+
+function isSortKey(value: string | null): value is SortKey {
+  return sortOptions.some((item) => item.value === value);
+}
+
+function parseSourceId(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function readUrlState(): UrlState {
+  const params = new URLSearchParams(window.location.search);
+  const sinceParam = params.get("since");
+  const sortParam = params.get("sort");
+  const profile = params.get("profile")?.trim() || defaultUrlState.profile;
+  const feedWindow = isFeedWindow(sinceParam) ? sinceParam : defaultUrlState.feedWindow;
+  const sort = isSortKey(sortParam) ? sortParam : defaultUrlState.sort;
+  const sourceId = parseSourceId(params.get("source"));
+  const sourceName = params.get("sourceName")?.trim() || null;
+
+  return {
+    profile,
+    feedWindow,
+    sort,
+    sourceId,
+    sourceName: sourceId ? sourceName : null,
+  };
+}
+
+function urlForState(state: UrlState) {
+  const params = new URLSearchParams();
+  params.set("profile", state.profile);
+  params.set("since", state.feedWindow);
+  params.set("sort", state.sort);
+  if (state.sourceId !== null) {
+    params.set("source", String(state.sourceId));
+    if (state.sourceName) {
+      params.set("sourceName", state.sourceName);
+    }
+  }
+
+  return `${window.location.pathname}?${params.toString()}${window.location.hash}`;
 }
 
 function normalizeState(state: UserChangeState): UserChangeState | null {
@@ -189,18 +244,34 @@ function RenderedText({ value }: { value: string }) {
 export default function App() {
   const [changes, setChanges] = useState<Change[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [urlState, setUrlState] = useState<UrlState>(readUrlState);
   const [profiles, setProfiles] = useState<Profile[]>([
     { name: "dev", source_count: 0 },
     { name: "games", source_count: 0 },
   ]);
-  const [selectedProfile, setSelectedProfile] = useState<ProfileName>(readSelectedProfile);
-  const [sort, setSort] = useState<SortKey>("newest");
-  const [feedWindow, setFeedWindow] = useState<FeedWindow>("7d");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>(null);
   const [openNotes, setOpenNotes] = useState<Record<number, boolean>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [userState, setUserState] = useState<UserStateByChange>(readUserState);
   const [isLoading, setIsLoading] = useState(true);
+
+  const selectedProfile = urlState.profile;
+  const feedWindow = urlState.feedWindow;
+  const sort = urlState.sort;
+
+  function updateUrlState(patch: Partial<UrlState>, mode: "push" | "replace" = "push") {
+    setUrlState((current) => {
+      const next = { ...current, ...patch };
+      window.history[mode === "push" ? "pushState" : "replaceState"](null, "", urlForState(next));
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    window.history.replaceState(null, "", urlForState(urlState));
+    const onPopState = () => setUrlState(readUrlState());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     try {
@@ -209,14 +280,6 @@ export default function App() {
       setError("Could not persist browser state in localStorage.");
     }
   }, [userState]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(selectedProfileStorageKey, selectedProfile);
-    } catch {
-      setError("Could not persist selected profile in localStorage.");
-    }
-  }, [selectedProfile]);
 
   useEffect(() => {
     fetchProfiles()
@@ -279,8 +342,14 @@ export default function App() {
     viewChanges.filter((change) => change.saved),
     "saved",
   );
+  const sourceFilter: SourceFilter = urlState.sourceId
+    ? {
+        id: urlState.sourceId,
+        name: urlState.sourceName || viewChanges.find((change) => change.source_id === urlState.sourceId)?.source_name || `Source ${urlState.sourceId}`,
+      }
+    : null;
   const feedChanges = sortedChanges(
-    viewChanges.filter((change) => !change.dismissed && !change.saved && (sourceFilter === null || change.source_id === sourceFilter.id)),
+    viewChanges.filter((change) => !change.dismissed && !change.saved && (urlState.sourceId === null || change.source_id === urlState.sourceId)),
     sort,
   );
   const sourceCount = new Set(viewChanges.map((change) => change.source_id)).size;
@@ -329,12 +398,11 @@ export default function App() {
           queueCount={feedChanges.length}
           dismissedCount={dismissedCount}
           feedWindow={feedWindow}
-          onClearSourceFilter={() => setSourceFilter(null)}
-          onFeedWindowChange={setFeedWindow}
-          onSortChange={setSort}
+          onClearSourceFilter={() => updateUrlState({ sourceId: null, sourceName: null })}
+          onFeedWindowChange={(nextFeedWindow) => updateUrlState({ feedWindow: nextFeedWindow })}
+          onSortChange={(nextSort) => updateUrlState({ sort: nextSort })}
           onProfileChange={(profile) => {
-            setSelectedProfile(profile);
-            setSourceFilter(null);
+            updateUrlState({ profile, sourceId: null, sourceName: null });
           }}
           profiles={profiles}
           savedCount={savedChanges.length}
@@ -352,7 +420,7 @@ export default function App() {
             onRemoveSaved={onToggleSaved}
             openNotes={openNotes}
             onSaveNote={onSaveNote}
-            onSourceFilter={(change) => setSourceFilter({ id: change.source_id, name: change.source_name })}
+            onSourceFilter={(change) => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name })}
             onToggleNote={(changeId) => setOpenNotes((current) => ({ ...current, [changeId]: !(current[changeId] ?? false) }))}
             onUpdateDraft={(changeKey, value) => setNoteDrafts((current) => ({ ...current, [changeKey]: value }))}
             savedChanges={savedChanges}
@@ -379,7 +447,7 @@ export default function App() {
               openNotes={openNotes}
               onDismiss={onDismiss}
               onSaveNote={onSaveNote}
-              onSourceFilter={(change) => setSourceFilter({ id: change.source_id, name: change.source_name })}
+              onSourceFilter={(change) => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name })}
               onToggleNote={(changeId) => setOpenNotes((current) => ({ ...current, [changeId]: !(current[changeId] ?? false) }))}
               onToggleSaved={onToggleSaved}
               onUpdateDraft={(changeKey, value) => setNoteDrafts((current) => ({ ...current, [changeKey]: value }))}
