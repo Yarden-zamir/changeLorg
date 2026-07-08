@@ -2,3 +2,7 @@ deploy:
   - on: push
     branch: main
     name: prod
+
+  - on: pull_request
+    name: pr-{pr}
+    ephemeral: true
