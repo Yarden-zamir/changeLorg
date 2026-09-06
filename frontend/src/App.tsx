@@ -1,40 +1,9 @@
-import DOMPurify from "dompurify";
-import { marked } from "marked";
-import {
-  BookmarkCheck,
-  BookmarkPlus,
-  CalendarDays,
-  ChevronDown,
-  ExternalLink,
-  Inbox,
-  LibraryBig,
-  Newspaper,
-  X,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { BookmarkCheck, CalendarDays, Inbox, LibraryBig, Newspaper, Undo2 } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
+import { ChangeCard } from "./components/ChangeCard";
 import { Badge } from "./components/ui/badge";
-import { Button } from "./components/ui/button";
-import { Card, CardContent } from "./components/ui/card";
-
-type Change = {
-  id: number;
-  external_id: string | null;
-  source_id: number;
-  source_name: string;
-  source_profile: string;
-  plugin: string;
-  title: string;
-  url: string | null;
-  summary: string;
-  content: string;
-  published_at: string;
-  fetched_at: string;
-  dismissed: boolean;
-  saved: boolean;
-  note: string;
-  state_updated_at: string | null;
-};
+import { changeKey, dateValue, openChange, type CardLocation, type Change, type ViewChange } from "./lib/changes";
 
 type UserChangeState = {
   dismissed?: boolean;
@@ -42,7 +11,7 @@ type UserChangeState = {
   note?: string;
 };
 type UserStateByChange = Record<string, UserChangeState>;
-type SortKey = "newest" | "oldest" | "source" | "saved";
+type SortKey = "newest" | "oldest" | "source";
 type FeedWindow = "24h" | "7d" | "30d" | "90d" | "365d";
 type ProfileName = "dev" | "games" | string;
 type SourceFilter = { id: number; name: string } | null;
@@ -54,12 +23,22 @@ type UrlState = {
   sourceId: number | null;
   sourceName: string | null;
 };
-type ViewChange = Change & {
-  change_key: string;
+/** The last state change, kept so one tap can undo a mis-swipe. */
+type LastAction = {
+  changeKey: string;
+  label: string;
+  previous: UserChangeState | undefined;
+};
+/** Where the viewport must land after a card leaves a queue. */
+type ScrollAnchor = {
+  nextKey: string | null;
+  top: number;
 };
 
 const apiUrl = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 const userStateStorageKey = "changelorg:user-state:v1";
+const undoTimeoutMs = 8000;
+const anchorTopMin = 16;
 const defaultUrlState: UrlState = {
   profile: "dev",
   feedWindow: "7d",
@@ -80,7 +59,6 @@ const sortOptions: Array<{ value: SortKey; label: string }> = [
   { value: "newest", label: "Newest first" },
   { value: "oldest", label: "Oldest first" },
   { value: "source", label: "Group by source" },
-  { value: "saved", label: "Shelf first" },
 ];
 
 async function fetchChanges(feedWindow: FeedWindow, profile: ProfileName): Promise<Change[]> {
@@ -110,10 +88,6 @@ function readUserState(): UserStateByChange {
   } catch {
     return {};
   }
-}
-
-function changeKey(change: Change) {
-  return `${change.source_id}:${change.external_id || change.url || change.title}`;
 }
 
 function isFeedWindow(value: string | null): value is FeedWindow {
@@ -186,23 +160,6 @@ function profileLabel(profile: ProfileName) {
   return profile;
 }
 
-function dateValue(value: string) {
-  const time = new Date(value).getTime();
-  return Number.isNaN(time) ? 0 : time;
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Undated";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
 function compareDate(left: string, right: string) {
   return dateValue(left) - dateValue(right);
 }
@@ -222,22 +179,28 @@ function sortedChanges<T extends Change>(changes: T[], sort: SortKey) {
       return bySource || compareDate(right.published_at, left.published_at);
     });
   }
-  if (sort === "saved") {
-    return copy.sort((left, right) => Number(right.saved) - Number(left.saved) || compareDate(right.published_at, left.published_at));
-  }
   return copy.sort((left, right) => compareDate(right.published_at, left.published_at));
 }
 
-function renderedHtml(value: string) {
-  const parsed = marked.parse(value, { async: false }) as string;
-  return DOMPurify.sanitize(parsed);
-}
-
-function RenderedText({ value }: { value: string }) {
-  if (!value.trim()) {
+function cardElement(key: string | null): HTMLElement | null {
+  if (key === null) {
     return null;
   }
-  return <div className="changelorg-rendered text-[0.95rem] leading-7 text-stone-700" dangerouslySetInnerHTML={{ __html: renderedHtml(value) }} />;
+  const escaped = typeof CSS !== "undefined" && "escape" in CSS ? CSS.escape(key) : key;
+  return document.querySelector<HTMLElement>(`[data-change-key="${escaped}"]`);
+}
+
+/** Viewport top of an element as laid out, ignoring its own transform. A swiped card is mid-flight when measured. */
+function layoutTop(element: HTMLElement | null) {
+  if (!element) {
+    return anchorTopMin;
+  }
+  const parent = element.offsetParent;
+  return parent instanceof HTMLElement ? parent.getBoundingClientRect().top + element.offsetTop : element.getBoundingClientRect().top;
+}
+
+function isTypingTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
 }
 
 export default function App() {
@@ -248,10 +211,14 @@ export default function App() {
     { name: "dev", source_count: 0 },
     { name: "games", source_count: 0 },
   ]);
-  const [openNotes, setOpenNotes] = useState<Record<number, boolean>>({});
+  const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [userState, setUserState] = useState<UserStateByChange>(readUserState);
   const [isLoading, setIsLoading] = useState(true);
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
+  const scrollAnchor = useRef<ScrollAnchor | null>(null);
+  const scrollOnFocus = useRef(false);
 
   const selectedProfile = urlState.profile;
   const feedWindow = urlState.feedWindow;
@@ -324,6 +291,14 @@ export default function App() {
     };
   }, [feedWindow, selectedProfile]);
 
+  useEffect(() => {
+    if (!lastAction) {
+      return;
+    }
+    const timer = window.setTimeout(() => setLastAction(null), undoTimeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [lastAction]);
+
   const viewChanges: ViewChange[] = changes.map((change) => {
     const key = changeKey(change);
     const state = userState[key] ?? {};
@@ -336,10 +311,15 @@ export default function App() {
     };
   });
 
+  const inSourceFilter = (change: ViewChange) => urlState.sourceId === null || change.source_id === urlState.sourceId;
   const dismissedCount = viewChanges.filter((change) => change.dismissed).length;
-  const savedChanges = sortedChanges(
-    viewChanges.filter((change) => change.saved),
-    "saved",
+  const shelfChanges = sortedChanges(
+    viewChanges.filter((change) => change.saved && !change.dismissed && inSourceFilter(change)),
+    sort,
+  );
+  const deskChanges = sortedChanges(
+    viewChanges.filter((change) => !change.dismissed && !change.saved && inSourceFilter(change)),
+    sort,
   );
   const sourceFilter: SourceFilter = urlState.sourceId
     ? {
@@ -347,13 +327,41 @@ export default function App() {
         name: urlState.sourceName || viewChanges.find((change) => change.source_id === urlState.sourceId)?.source_name || `Source ${urlState.sourceId}`,
       }
     : null;
-  const feedChanges = sortedChanges(
-    viewChanges.filter((change) => !change.dismissed && !change.saved && (urlState.sourceId === null || change.source_id === urlState.sourceId)),
-    sort,
-  );
   const sourceCount = new Set(viewChanges.map((change) => change.source_id)).size;
+  // Shelf first, then desk: the order cards appear on screen. Drives keyboard focus and scroll anchoring.
+  const visibleChanges = [...shelfChanges, ...deskChanges];
+  const visibleKeys = visibleChanges.map((change) => change.change_key);
 
-  function updateLocalChangeState(change: ViewChange, patch: UserChangeState) {
+  // After a card leaves, put the card that followed it where the removed card was.
+  useLayoutEffect(() => {
+    const anchor = scrollAnchor.current;
+    if (!anchor) {
+      return;
+    }
+    scrollAnchor.current = null;
+    const nextElement = cardElement(anchor.nextKey);
+    if (!nextElement) {
+      return;
+    }
+    const targetTop = Math.max(anchor.top, anchorTopMin);
+    window.scrollBy({ top: nextElement.getBoundingClientRect().top - targetTop });
+  }, [userState]);
+
+  // Move DOM focus to the focused card. Only keyboard navigation scrolls; a click or a removal keeps the viewport still.
+  useEffect(() => {
+    const element = cardElement(focusedKey);
+    const scroll = scrollOnFocus.current;
+    scrollOnFocus.current = false;
+    if (!element || element.contains(document.activeElement) || isTypingTarget(document.activeElement)) {
+      return;
+    }
+    element.focus({ preventScroll: true });
+    if (scroll) {
+      element.scrollIntoView({ block: "nearest" });
+    }
+  }, [focusedKey, visibleKeys.join("\n")]);
+
+  function updateLocalChangeState(change: ViewChange, patch: UserChangeState, label: string | null) {
     setUserState((current) => {
       const currentState = current[change.change_key] ?? {};
       const nextState = normalizeState({ ...currentState, ...patch });
@@ -365,46 +373,163 @@ export default function App() {
       }
       return next;
     });
+    if (label) {
+      setLastAction({ changeKey: change.change_key, label, previous: userState[change.change_key] });
+    }
   }
 
-  function onDismiss(change: ViewChange) {
-    setError(null);
-    updateLocalChangeState(change, { dismissed: true });
+  /** Record where `change` sits so the following card can take its place, and move focus to it. */
+  function anchorAfterRemoval(change: ViewChange) {
+    const index = visibleKeys.indexOf(change.change_key);
+    const nextKey = visibleKeys[index + 1] ?? visibleKeys[index - 1] ?? null;
+    scrollAnchor.current = { nextKey, top: layoutTop(cardElement(change.change_key)) };
+    if (focusedKey === change.change_key) {
+      setFocusedKey(nextKey);
+    }
   }
 
-  function onToggleSaved(change: ViewChange) {
+  function onClear(change: ViewChange) {
     setError(null);
+    anchorAfterRemoval(change);
+    updateLocalChangeState(change, { dismissed: true }, change.saved ? "Marked read" : "Cleared from desk");
+  }
+
+  function onToggleShelf(change: ViewChange) {
+    setError(null);
+    anchorAfterRemoval(change);
     const nextSaved = !change.saved;
-    updateLocalChangeState(change, nextSaved ? { saved: true } : { saved: false, note: "" });
+    updateLocalChangeState(change, nextSaved ? { saved: true } : { saved: false, note: "" }, nextSaved ? "Shelved" : "Back on the desk");
     if (!nextSaved) {
-      setOpenNotes((current) => ({ ...current, [change.id]: false }));
+      setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
       setNoteDrafts((current) => ({ ...current, [change.change_key]: "" }));
     }
   }
 
   function onSaveNote(change: ViewChange) {
     setError(null);
-    updateLocalChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? "" });
-    setOpenNotes((current) => ({ ...current, [change.id]: false }));
+    if (!change.saved) {
+      anchorAfterRemoval(change);
+    }
+    updateLocalChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? "" }, change.saved ? null : "Shelved with note");
+    setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
   }
 
+  function onToggleNote(change: ViewChange) {
+    setOpenNotes((current) => ({ ...current, [change.change_key]: !(current[change.change_key] ?? false) }));
+  }
+
+  function onUndo() {
+    if (!lastAction) {
+      return;
+    }
+    const { changeKey: key, previous } = lastAction;
+    setUserState((current) => {
+      const next = { ...current };
+      if (previous) {
+        next[key] = previous;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+    setLastAction(null);
+    scrollOnFocus.current = true;
+    setFocusedKey(key);
+  }
+
+  function onRestoreCleared() {
+    setUserState((current) => {
+      const next = { ...current };
+      for (const change of viewChanges) {
+        if (!change.dismissed) {
+          continue;
+        }
+        const restored = normalizeState({ ...next[change.change_key], dismissed: false });
+        if (restored) {
+          next[change.change_key] = restored;
+        } else {
+          delete next[change.change_key];
+        }
+      }
+      return next;
+    });
+    setLastAction(null);
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) {
+        return;
+      }
+      if (event.key === "z" || event.key === "u") {
+        onUndo();
+        return;
+      }
+      const index = focusedKey ? visibleKeys.indexOf(focusedKey) : -1;
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        scrollOnFocus.current = true;
+        setFocusedKey(visibleKeys[Math.min(index + 1, visibleKeys.length - 1)] ?? null);
+        return;
+      }
+      if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        scrollOnFocus.current = true;
+        setFocusedKey(visibleKeys[Math.max(index - 1, 0)] ?? null);
+        return;
+      }
+      const change = index >= 0 ? visibleChanges[index] : undefined;
+      if (!change) {
+        return;
+      }
+      if (event.key === "x") {
+        onClear(change);
+      } else if (event.key === "s") {
+        onToggleShelf(change);
+      } else if (event.key === "o" || event.key === "Enter") {
+        openChange(change);
+      } else if (event.key === "n") {
+        event.preventDefault();
+        onToggleNote(change);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  const cardProps = (change: ViewChange, location: CardLocation) => ({
+    change,
+    location,
+    focused: focusedKey === change.change_key,
+    noteDraft: noteDrafts[change.change_key] ?? "",
+    noteOpen: openNotes[change.change_key] ?? false,
+    onFocus: () => setFocusedKey(change.change_key),
+    onClear: () => onClear(change),
+    onToggleShelf: () => onToggleShelf(change),
+    onSaveNote: () => onSaveNote(change),
+    onSourceFilter: () => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name }),
+    onToggleNote: () => onToggleNote(change),
+    onUpdateDraft: (value: string) => setNoteDrafts((current) => ({ ...current, [change.change_key]: value })),
+  });
+
   return (
-    <main className="min-h-screen overflow-hidden bg-[#ece7db] px-3 py-4 text-stone-950 sm:px-5 lg:px-8">
+    <main className="min-h-screen overflow-x-hidden bg-[#ece7db] px-3 py-4 text-stone-950 [overflow-anchor:none] sm:px-5 lg:px-8">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(120,53,15,0.16),transparent_32rem),linear-gradient(90deg,rgba(28,25,23,0.045)_1px,transparent_1px),linear-gradient(rgba(28,25,23,0.045)_1px,transparent_1px)] bg-[length:auto,44px_44px,44px_44px]" />
 
       <section className="relative mx-auto grid max-w-7xl gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
         <ControlPanel
-          queueCount={feedChanges.length}
+          queueCount={deskChanges.length}
           dismissedCount={dismissedCount}
           feedWindow={feedWindow}
           onClearSourceFilter={() => updateUrlState({ sourceId: null, sourceName: null })}
           onFeedWindowChange={(nextFeedWindow) => updateUrlState({ feedWindow: nextFeedWindow })}
+          onRestoreCleared={onRestoreCleared}
           onSortChange={(nextSort) => updateUrlState({ sort: nextSort })}
           onProfileChange={(profile) => {
             updateUrlState({ profile, sourceId: null, sourceName: null });
           }}
           profiles={profiles}
-          savedCount={savedChanges.length}
+          savedCount={shelfChanges.length}
           selectedProfile={selectedProfile}
           sourceFilter={sourceFilter}
           sort={sort}
@@ -414,46 +539,70 @@ export default function App() {
         <div className="flex min-w-0 flex-col gap-5">
           {error ? <ErrorNote message={error} /> : null}
 
-          <SavedSection
-            noteDrafts={noteDrafts}
-            onRemoveSaved={onToggleSaved}
-            openNotes={openNotes}
-            onSaveNote={onSaveNote}
-            onSourceFilter={(change) => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name })}
-            onToggleNote={(changeId) => setOpenNotes((current) => ({ ...current, [changeId]: !(current[changeId] ?? false) }))}
-            onUpdateDraft={(changeKey, value) => setNoteDrafts((current) => ({ ...current, [changeKey]: value }))}
-            savedChanges={savedChanges}
-          />
+          <section data-queue="shelf" className="rounded-[2rem] border border-amber-900/30 bg-[#f9d978] p-4 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)] sm:p-5">
+            <QueueHeader
+              count={shelfChanges.length}
+              icon={<BookmarkCheck className="h-4 w-4" />}
+              swipeHint="Swipe left to mark read, right to open the source."
+              title="The shelf"
+              tone="shelf"
+            >
+              {shelfChanges.length === 0
+                ? "Nothing shelved yet. Shelf a desk item and it waits here until you mark it read."
+                : `${shelfChanges.length} item${shelfChanges.length === 1 ? "" : "s"} shelved for later. Mark read when done, or put one back on the desk.`}
+            </QueueHeader>
 
-          <section className="rounded-[2rem] border border-stone-950/15 bg-[#fffdf7]/90 p-4 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
-            <div className="flex flex-col gap-3 border-b border-stone-950/15 pb-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.28em] text-stone-500">
-                  <Newspaper className="h-4 w-4" />
-                  The desk
-                </div>
+            {shelfChanges.length === 0 ? null : (
+              <div className="mt-4 grid gap-4">
+                {shelfChanges.map((change) => (
+                  <ChangeCard key={change.change_key} {...cardProps(change, "shelf")} />
+                ))}
               </div>
-              <p className="max-w-md text-sm leading-6 text-stone-600">
-                {feedChanges.length} readable {profileLabel(selectedProfile)} item{feedChanges.length === 1 ? "" : "s"} on the desk from the last {windowLabel(feedWindow)}. Desk state stays in this browser.
-              </p>
-            </div>
-
-            <FeedBody
-              changes={feedChanges}
-              isLoading={isLoading}
-              noteDrafts={noteDrafts}
-              openNotes={openNotes}
-              onDismiss={onDismiss}
-              onSaveNote={onSaveNote}
-              onSourceFilter={(change) => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name })}
-              onToggleNote={(changeId) => setOpenNotes((current) => ({ ...current, [changeId]: !(current[changeId] ?? false) }))}
-              onToggleSaved={onToggleSaved}
-              onUpdateDraft={(changeKey, value) => setNoteDrafts((current) => ({ ...current, [changeKey]: value }))}
-            />
+            )}
           </section>
+
+          <section data-queue="desk" className="rounded-[2rem] border border-stone-950/15 bg-[#fffdf7]/90 p-4 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
+            <QueueHeader count={deskChanges.length} icon={<Newspaper className="h-4 w-4" />} swipeHint="Swipe left to clear, right to shelf." title="The desk" tone="desk">
+              {deskChanges.length} readable {profileLabel(selectedProfile)} item{deskChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Desk state stays in this browser.
+            </QueueHeader>
+
+            {isLoading ? (
+              <LoadingState />
+            ) : deskChanges.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="mt-5 grid gap-4">
+                {deskChanges.map((change) => (
+                  <ChangeCard key={change.change_key} {...cardProps(change, "desk")} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <KeyboardLegend />
         </div>
       </section>
+
+      {lastAction ? <UndoToast label={lastAction.label} onUndo={onUndo} /> : null}
     </main>
+  );
+}
+
+function QueueHeader({ children, count, icon, swipeHint, title, tone }: { children: ReactNode; count: number; icon: ReactNode; swipeHint: string; title: string; tone: "shelf" | "desk" }) {
+  const muted = tone === "shelf" ? "text-amber-950/65" : "text-stone-500";
+  const body = tone === "shelf" ? "text-amber-950/80" : "text-stone-600";
+  return (
+    <div className={`flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between ${tone === "shelf" ? "border-amber-950/20" : "border-stone-950/15"}`}>
+      <div>
+        <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] ${muted}`}>
+          {icon}
+          {title}
+          <Badge className={tone === "shelf" ? "border-amber-950/20 bg-amber-950 text-amber-50" : "border-stone-950/20 bg-stone-950 text-[#fff8e8]"}>{count}</Badge>
+        </div>
+        <p className={`mt-2 hidden text-xs font-semibold pointer-coarse:block ${body}`}>{swipeHint}</p>
+      </div>
+      <p className={`max-w-md text-sm leading-6 ${body}`}>{children}</p>
+    </div>
   );
 }
 
@@ -464,6 +613,7 @@ function ControlPanel({
   onClearSourceFilter,
   onFeedWindowChange,
   onProfileChange,
+  onRestoreCleared,
   onSortChange,
   profiles,
   savedCount,
@@ -478,6 +628,7 @@ function ControlPanel({
   onClearSourceFilter: () => void;
   onFeedWindowChange: (value: FeedWindow) => void;
   onProfileChange: (value: ProfileName) => void;
+  onRestoreCleared: () => void;
   onSortChange: (value: SortKey) => void;
   profiles: Profile[];
   savedCount: number;
@@ -486,31 +637,34 @@ function ControlPanel({
   sort: SortKey;
   sourceCount: number;
 }) {
+  const selectClassName = "h-11 w-full rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-3 text-sm font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d]";
   return (
     <aside className="lg:sticky lg:top-5 lg:self-start">
       <div className="overflow-hidden rounded-[2rem] border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
-        <div className="border-b border-[#fff8e8]/15 p-5 sm:p-6">
+        <div className="hidden border-b border-[#fff8e8]/15 p-5 sm:p-6 lg:block">
           <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Local changelog desk</Badge>
         </div>
 
-        <div className="grid grid-cols-2 gap-px border-b border-[#fff8e8]/15 bg-[#fff8e8]/15 text-center">
+        <div className="grid grid-cols-4 gap-px border-b border-[#fff8e8]/15 bg-[#fff8e8]/15 text-center lg:grid-cols-2">
           <DeskStat label="desk" value={queueCount} />
-          <DeskStat label="sources" value={sourceCount} />
           <DeskStat label="shelf" value={savedCount} />
-          <DeskStat label="cleared" value={dismissedCount} />
+          <DeskStat label="sources" value={sourceCount} />
+          <DeskStat label="cleared" value={dismissedCount}>
+            {dismissedCount > 0 ? (
+              <button className="mt-2 text-[0.65rem] font-black uppercase tracking-[0.18em] text-[#f8df9d] underline underline-offset-4" onClick={onRestoreCleared} type="button">
+                Restore
+              </button>
+            ) : null}
+          </DeskStat>
         </div>
 
-        <div className="space-y-4 p-5 sm:p-6">
+        <div className="grid grid-cols-3 gap-3 p-4 sm:gap-4 sm:p-6 lg:grid-cols-1">
           <label className="block">
             <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
               <Inbox className="h-4 w-4" />
               Profile
             </span>
-            <select
-              className="h-11 w-full rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-3 text-sm font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d]"
-              value={selectedProfile}
-              onChange={(event) => onProfileChange(event.target.value)}
-            >
+            <select className={selectClassName} value={selectedProfile} onChange={(event) => onProfileChange(event.target.value)}>
               {profiles.map((profile) => (
                 <option key={profile.name} value={profile.name}>
                   {profileLabel(profile.name)} - {profile.source_count} source{profile.source_count === 1 ? "" : "s"}
@@ -519,26 +673,12 @@ function ControlPanel({
             </select>
           </label>
 
-          {sourceFilter ? (
-            <div className="rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3">
-              <div className="text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#b8af9d]">Source filter</div>
-              <div className="mt-1 truncate text-sm font-black text-[#fff8e8]">{sourceFilter.name}</div>
-              <button className="mt-2 text-xs font-black text-[#f8df9d] underline underline-offset-4" onClick={onClearSourceFilter} type="button">
-                Show all sources
-              </button>
-            </div>
-          ) : null}
-
           <label className="block">
             <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
               <CalendarDays className="h-4 w-4" />
               Window
             </span>
-            <select
-              className="h-11 w-full rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-3 text-sm font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d]"
-              value={feedWindow}
-              onChange={(event) => onFeedWindowChange(event.target.value as FeedWindow)}
-            >
+            <select className={selectClassName} value={feedWindow} onChange={(event) => onFeedWindowChange(event.target.value as FeedWindow)}>
               {feedWindows.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label} - {item.caption}
@@ -550,13 +690,9 @@ function ControlPanel({
           <label className="block">
             <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
               <LibraryBig className="h-4 w-4" />
-              Filing order
+              Order
             </span>
-            <select
-              className="h-11 w-full rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-3 text-sm font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d]"
-              value={sort}
-              onChange={(event) => onSortChange(event.target.value as SortKey)}
-            >
+            <select className={selectClassName} value={sort} onChange={(event) => onSortChange(event.target.value as SortKey)}>
               {sortOptions.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
@@ -565,17 +701,27 @@ function ControlPanel({
             </select>
           </label>
 
+          {sourceFilter ? (
+            <div className="col-span-3 rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3 lg:col-span-1">
+              <div className="text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#b8af9d]">Source filter</div>
+              <div className="mt-1 truncate text-sm font-black text-[#fff8e8]">{sourceFilter.name}</div>
+              <button className="mt-2 text-xs font-black text-[#f8df9d] underline underline-offset-4" onClick={onClearSourceFilter} type="button">
+                Show all sources
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </aside>
   );
 }
 
-function DeskStat({ label, value }: { label: string; value: number }) {
+function DeskStat({ children, label, value }: { children?: ReactNode; label: string; value: number }) {
   return (
     <div className="bg-[#1d1a16] px-3 py-4">
       <div className="font-serif text-3xl font-black leading-none text-[#f8df9d]">{value}</div>
       <div className="mt-1 text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#b8af9d]">{label}</div>
+      {children}
     </div>
   );
 }
@@ -588,176 +734,36 @@ function ErrorNote({ message }: { message: string }) {
   );
 }
 
-function SavedSection({
-  noteDrafts,
-  onRemoveSaved,
-  openNotes,
-  onSaveNote,
-  onSourceFilter,
-  onToggleNote,
-  onUpdateDraft,
-  savedChanges,
-}: {
-  noteDrafts: Record<string, string>;
-  openNotes: Record<number, boolean>;
-  onRemoveSaved: (change: ViewChange) => void;
-  onSaveNote: (change: ViewChange) => void;
-  onSourceFilter: (change: ViewChange) => void;
-  onToggleNote: (changeId: number) => void;
-  onUpdateDraft: (changeKey: string, value: string) => void;
-  savedChanges: ViewChange[];
-}) {
+function UndoToast({ label, onUndo }: { label: string; onUndo: () => void }) {
   return (
-    <section className="rounded-[2rem] border border-amber-900/30 bg-[#f9d978] p-4 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-amber-950/65">
-            <BookmarkCheck className="h-4 w-4" />
-            The shelf
-          </div>
-          <h2 className="font-serif text-2xl font-black leading-none tracking-tight sm:text-3xl">Shelved for later</h2>
-        </div>
-        <Badge className="w-fit border-amber-950/20 bg-amber-950 text-amber-50">{savedChanges.length} shelved</Badge>
+    <div className="fixed inset-x-0 bottom-4 z-20 flex justify-center px-3" role="status">
+      <div className="flex items-center gap-3 rounded-full border border-stone-950 bg-[#1d1a16] py-2 pl-5 pr-2 text-sm font-semibold text-[#fff8e8] shadow-[6px_6px_0_rgba(28,25,23,0.22)]">
+        {label}
+        <button className="inline-flex h-9 items-center gap-1 rounded-full bg-[#f8df9d] px-4 font-black text-stone-950 transition-colors hover:bg-amber-300" onClick={onUndo} type="button">
+          <Undo2 className="h-4 w-4" />
+          Undo
+        </button>
       </div>
-
-      {savedChanges.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-amber-950/35 bg-amber-50/35 p-4 text-sm font-medium leading-6 text-amber-950/75">
-          Shelf a newspaper or add a note and it will stay here, above the desk noise, until you put it back on the desk.
-        </div>
-      ) : (
-        <div className="mt-4 grid gap-3 xl:grid-cols-2">
-          {savedChanges.map((change) => (
-            <SavedCard
-              change={change}
-              key={change.id}
-              noteDraft={noteDrafts[change.change_key] ?? ""}
-              noteOpen={openNotes[change.id] ?? false}
-              onRemoveSaved={onRemoveSaved}
-              onSaveNote={onSaveNote}
-              onSourceFilter={onSourceFilter}
-              onToggleNote={() => onToggleNote(change.id)}
-              onUpdateDraft={(value) => onUpdateDraft(change.change_key, value)}
-            />
-          ))}
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
 
-function SavedCard({
-  change,
-  noteDraft,
-  noteOpen,
-  onRemoveSaved,
-  onSaveNote,
-  onSourceFilter,
-  onToggleNote,
-  onUpdateDraft,
-}: {
-  change: ViewChange;
-  noteDraft: string;
-  noteOpen: boolean;
-  onRemoveSaved: (change: ViewChange) => void;
-  onSaveNote: (change: ViewChange) => void;
-  onSourceFilter: (change: ViewChange) => void;
-  onToggleNote: () => void;
-  onUpdateDraft: (value: string) => void;
-}) {
+function KeyboardLegend() {
+  const keys: Array<[string, string]> = [
+    ["j / k", "next / previous"],
+    ["x", "clear or mark read"],
+    ["s", "shelf / back to desk"],
+    ["o", "open source"],
+    ["n", "note"],
+    ["z", "undo"],
+  ];
   return (
-    <Card className="rounded-2xl border-amber-950/20 bg-[#fff8e8]/90 shadow-none">
-      <CardContent className="space-y-3 p-4">
-        <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-amber-950/60">
-          <button className="transition-colors hover:text-stone-950 hover:underline" onClick={() => onSourceFilter(change)} title={`Filter to ${change.source_name}`} type="button">
-            {change.source_name}
-          </button>
-          <span aria-hidden="true">/</span>
-          <span>{formatDate(change.published_at)}</span>
-        </div>
-        <h3 className="line-clamp-2 font-serif text-lg font-black leading-tight text-stone-950 sm:text-xl">{change.title}</h3>
-        {change.note.trim() ? <p className="scrollbar-none max-h-24 overflow-y-auto rounded-xl bg-amber-100/80 p-3 text-sm leading-6 text-stone-700">{change.note}</p> : null}
-        {noteOpen ? (
-          <div className="rounded-xl border border-amber-950/20 bg-amber-50/70 p-3">
-            <textarea
-              className="min-h-20 w-full rounded-xl border border-amber-950/20 bg-white p-3 text-sm leading-6 text-stone-950 outline-none focus:border-amber-950"
-              onChange={(event) => onUpdateDraft(event.target.value)}
-              placeholder="Add why this is worth revisiting."
-              value={noteDraft}
-            />
-            <div className="mt-2 flex justify-end">
-              <Button className="rounded-xl bg-amber-950 text-amber-50 hover:bg-amber-900" onClick={() => onSaveNote(change)}>
-                Shelf note
-              </Button>
-            </div>
-          </div>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-3">
-          {change.url ? (
-            <a className="inline-flex items-center gap-1 text-sm font-black text-stone-950 underline decoration-amber-800/40 underline-offset-4" href={change.url} rel="noreferrer" target="_blank">
-              Revisit source
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : null}
-          <button className="inline-flex items-center gap-1 text-sm font-black text-stone-950 underline decoration-amber-800/40 underline-offset-4" onClick={onToggleNote} type="button">
-            {noteOpen ? "Close note" : change.note.trim() ? "Edit note" : "Add note"}
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${noteOpen ? "rotate-180" : ""}`} />
-          </button>
-          <button className="inline-flex items-center gap-1 text-sm font-black text-amber-950 underline decoration-amber-800/40 underline-offset-4" onClick={() => onRemoveSaved(change)} type="button">
-            Back to desk
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FeedBody({
-  changes,
-  isLoading,
-  noteDrafts,
-  openNotes,
-  onDismiss,
-  onSaveNote,
-  onSourceFilter,
-  onToggleNote,
-  onToggleSaved,
-  onUpdateDraft,
-}: {
-  changes: ViewChange[];
-  isLoading: boolean;
-  noteDrafts: Record<string, string>;
-  openNotes: Record<number, boolean>;
-  onDismiss: (change: ViewChange) => void;
-  onSaveNote: (change: ViewChange) => void;
-  onSourceFilter: (change: ViewChange) => void;
-  onToggleNote: (changeId: number) => void;
-  onToggleSaved: (change: ViewChange) => void;
-  onUpdateDraft: (changeKey: string, value: string) => void;
-}) {
-  if (isLoading) {
-    return <LoadingState />;
-  }
-
-  if (changes.length === 0) {
-    return <EmptyState />;
-  }
-
-  return (
-    <div className="mt-5 grid gap-4">
-      {changes.map((change) => (
-        <ChangeCard
-          change={change}
-          key={change.id}
-          noteDraft={noteDrafts[change.change_key] ?? ""}
-          noteOpen={openNotes[change.id] ?? false}
-          onDismiss={onDismiss}
-          onSaveNote={onSaveNote}
-          onSourceFilter={onSourceFilter}
-          onToggleNote={() => onToggleNote(change.id)}
-          onToggleSaved={onToggleSaved}
-          onUpdateDraft={(value) => onUpdateDraft(change.change_key, value)}
-        />
+    <div className="hidden flex-wrap items-center gap-x-5 gap-y-2 px-2 text-xs font-semibold text-stone-500 pointer-fine:flex">
+      {keys.map(([key, label]) => (
+        <span className="inline-flex items-center gap-2" key={key}>
+          <kbd className="rounded-md border border-stone-950/20 bg-white px-1.5 py-0.5 font-mono text-[0.7rem] text-stone-800">{key}</kbd>
+          {label}
+        </span>
       ))}
     </div>
   );
@@ -785,129 +791,8 @@ function EmptyState() {
   return (
     <div className="mt-5 rounded-[1.75rem] border border-dashed border-stone-950/25 bg-stone-100/80 p-6 text-center">
       <Inbox className="mx-auto h-9 w-9 text-stone-600" />
-      <h3 className="mt-4 font-serif text-2xl font-black">No newspapers on the desk</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">Try a wider window, another profile, or a different source filter.</p>
+      <h3 className="mt-4 font-serif text-2xl font-black">Desk is clear</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">Try a wider window, another profile, a different source filter, or restore cleared items from the panel.</p>
     </div>
-  );
-}
-
-function ChangeCard({
-  change,
-  noteDraft,
-  noteOpen,
-  onDismiss,
-  onSaveNote,
-  onSourceFilter,
-  onToggleNote,
-  onToggleSaved,
-  onUpdateDraft,
-}: {
-  change: ViewChange;
-  noteDraft: string;
-  noteOpen: boolean;
-  onDismiss: (change: ViewChange) => void;
-  onSaveNote: (change: ViewChange) => void;
-  onSourceFilter: (change: ViewChange) => void;
-  onToggleNote: () => void;
-  onToggleSaved: (change: ViewChange) => void;
-  onUpdateDraft: (value: string) => void;
-}) {
-  const preview = change.content || change.summary;
-  const noteId = `note-${change.id}`;
-
-  return (
-    <article className="group overflow-hidden rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] shadow-[5px_5px_0_rgba(28,25,23,0.14)] transition-transform duration-200 hover:-translate-y-0.5">
-      <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_190px]">
-        <div className="min-w-0 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-stone-500">
-            <button
-              className="inline-flex items-center rounded-full border border-stone-950 bg-stone-950 px-2.5 py-1 text-[#fff8e8] transition-colors hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-[#fffaf0]"
-              onClick={() => onSourceFilter(change)}
-              title={`Filter to ${change.source_name}`}
-              type="button"
-            >
-              {change.source_name}
-            </button>
-            {change.saved ? <Badge className="border-amber-900/25 bg-amber-200 text-amber-950">Shelved</Badge> : null}
-            <span className="inline-flex items-center gap-1">
-              <CalendarDays className="h-3.5 w-3.5" />
-              {formatDate(change.published_at)}
-            </span>
-          </div>
-
-          <h3 className="mt-4 max-w-3xl font-serif text-2xl font-black leading-[1.08] tracking-tight text-stone-950 sm:text-[2rem]">{change.title}</h3>
-
-          {preview.trim() ? (
-            <div className="scrollbar-none mt-4 max-h-72 overflow-y-auto rounded-2xl border border-stone-950/10 bg-white/65 px-4 py-3">
-              <RenderedText value={preview} />
-            </div>
-          ) : (
-            <div className="mt-4 rounded-2xl border border-dashed border-stone-950/20 bg-white/45 px-4 py-3 text-sm font-medium text-stone-500">No preview text came back for this source.</div>
-          )}
-        </div>
-
-        <div className="flex flex-col justify-between border-t border-stone-950 bg-[#eee6d6] p-4 md:border-l md:border-t-0">
-          <div className="rounded-2xl border border-stone-950/10 bg-white/55 p-3 text-sm text-stone-700">
-            <div className="flex items-center gap-2 text-[0.65rem] font-black uppercase tracking-[0.2em] text-stone-500">
-              <Newspaper className="h-3.5 w-3.5" />
-              Filing slip
-            </div>
-            <div className="mt-3 font-black leading-tight text-stone-950">{change.source_name}</div>
-            <div className="mt-1 text-xs font-semibold leading-5 text-stone-600">{formatDate(change.published_at)}</div>
-          </div>
-
-          <div className="mt-4 grid gap-2">
-            {change.url ? (
-              <a className="inline-flex h-10 items-center justify-center rounded-xl border border-stone-950 bg-white px-3 text-sm font-black text-stone-950 transition-colors hover:bg-amber-100" href={change.url} rel="noreferrer" target="_blank">
-                Open source
-                <ExternalLink className="ml-2 h-3.5 w-3.5" />
-              </a>
-            ) : null}
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Button className="rounded-xl bg-white text-stone-950 hover:bg-amber-100" onClick={() => onToggleSaved(change)} variant="secondary">
-                {change.saved ? <BookmarkCheck className="mr-2 h-4 w-4" /> : <BookmarkPlus className="mr-2 h-4 w-4" />}
-                {change.saved ? "Shelved" : "Shelf"}
-              </Button>
-              <Button
-                aria-controls={noteId}
-                aria-expanded={noteOpen}
-                aria-label={noteOpen ? "Collapse note editor" : "Expand note editor"}
-                className="rounded-xl bg-white px-3 text-stone-950 hover:bg-amber-100"
-                onClick={onToggleNote}
-                variant="secondary"
-              >
-                <ChevronDown className={`h-4 w-4 transition-transform ${noteOpen ? "rotate-180" : ""}`} />
-              </Button>
-            </div>
-            <Button className="rounded-xl bg-transparent text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8]" onClick={() => onDismiss(change)} variant="secondary">
-              <X className="mr-2 h-4 w-4" />
-              Clear from desk
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {noteOpen ? (
-        <div className="border-t border-stone-950 bg-[#fff8e8] p-4 sm:p-5" id={noteId}>
-          <label className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.18em] text-stone-600" htmlFor={`${noteId}-textarea`}>
-            <BookmarkPlus className="h-4 w-4" />
-            Shelf note
-          </label>
-          <textarea
-            className="mt-3 min-h-28 w-full rounded-2xl border border-stone-950/20 bg-white p-4 text-sm leading-6 text-stone-950 shadow-inner outline-none transition focus:border-stone-950"
-            id={`${noteId}-textarea`}
-            onChange={(event) => onUpdateDraft(event.target.value)}
-            placeholder="Why is this worth revisiting? Add the decision, risk, or follow-up here."
-            value={noteDraft}
-          />
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs font-medium text-stone-500">Shelving a note also moves this item to the shelf.</p>
-            <Button className="rounded-xl bg-stone-950 text-[#fff8e8] hover:bg-stone-800" onClick={() => onSaveNote(change)}>
-              Shelf note
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </article>
   );
 }

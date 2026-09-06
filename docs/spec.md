@@ -210,11 +210,20 @@ Behavior:
 - Reads those query parameters on page load and browser back/forward navigation.
 - Renders HTML and Markdown safely in card previews.
 - Renders changes as card-style items with source, publication time, title, summary/content preview, and link.
-- Supports sorting by newest, oldest, source, and saved-first.
-- Supports dismissing entries from the normal feed.
-- Supports saving entries for later.
-- Shows saved entries in a notes section at the top.
-- The note-for-later control includes an arrow that expands a text box for annotating the saved entry.
+- Supports sorting by newest, oldest, and source. The order applies to the shelf and the desk.
+- Shows two queues of the same card style: the shelf above the desk.
+- The desk holds entries that are neither cleared nor shelved. Desk actions: open source, shelf, note, clear from desk.
+- The shelf holds shelved entries that are not marked read. Shelf actions: open source, mark read, note, back to desk.
+- Mark read clears the entry from both queues. Restoring cleared entries puts a shelved entry back on the shelf.
+- Cards support horizontal swipe gestures with pointer or touch. Desk: swipe left clears, swipe right shelves. Shelf: swipe left marks read, swipe right opens the source and the card stays.
+- The action buttons on a card run the same animation as the matching swipe.
+- When a card leaves a queue, the card after it takes its place in the viewport. Shelving does not move the viewport even though the shelf above grows.
+- Keyboard: `j`/`k` or arrow keys move the current card, `x` clears or marks read, `s` shelves or unshelves, `o` or Enter opens the source, `n` toggles the note, `z` undoes. Keys are ignored while typing.
+- Every clear, shelf, and unshelf shows an undo toast for a few seconds.
+- The control panel shows a restore control when cleared entries exist in the loaded window. It clears the dismissed flag on all of them.
+- The note control is an arrow that expands a text box on the card. Saving a note from the desk shelves the entry. Cmd/Ctrl+Enter saves, Escape closes.
+- Empty queues render a one-line message inside the queue header.
+- The control panel collapses to one row of stats and one row of selects below the large breakpoint.
 - Dismissed, saved, and note state is persisted in browser `localStorage`, not the backend.
 - Backend-generated feed data is shared; browser-specific reading state stays private to that browser/profile.
 - Shows an empty state when no changes are cached.
@@ -223,7 +232,7 @@ Query parameters:
 
 - `profile`: Source profile, such as `dev` or `games`.
 - `since`: Feed window, one of `24h`, `7d`, `30d`, `90d`, or `365d`.
-- `sort`: Feed sort, one of `newest`, `oldest`, `source`, or `saved`.
+- `sort`: Feed sort, one of `newest`, `oldest`, or `source`. Unknown values fall back to `newest`.
 - `source`: Optional numeric source ID filter.
 - `sourceName`: Optional display name for the active source filter.
 
