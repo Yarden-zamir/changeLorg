@@ -216,6 +216,8 @@ Behavior:
 - The shelf holds shelved entries that are not marked read. Shelf actions: open source, mark read, note, back to desk.
 - Mark read clears the entry from both queues. Restoring cleared entries puts a shelved entry back on the shelf.
 - Cards support horizontal swipe gestures with pointer or touch. Desk: swipe left clears, swipe right shelves. Shelf: swipe left marks read, swipe right opens the source and the card stays.
+- A gesture picks one axis after 10px of movement. Flatter than 45 degrees is a swipe and the page does not scroll. Steeper is a browser scroll and the card does not move. A short fast flick counts as a swipe.
+- Touch and pen swipes start anywhere on the card except form controls and buttons, including on links. Mouse swipes do not start on links or on the preview text.
 - The action buttons on a card run the same animation as the matching swipe.
 - When a card leaves a queue, the card after it takes its place in the viewport. Shelving does not move the viewport even though the shelf above grows.
 - Keyboard: `j`/`k` or arrow keys move the current card, `x` clears or marks read, `s` shelves or unshelves, `o` or Enter opens the source, `n` toggles the note, `z` undoes. Keys are ignored while typing.

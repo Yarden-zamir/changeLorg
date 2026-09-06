@@ -10,18 +10,43 @@ type SwipeState = {
 
 type Gesture = {
   pointerId: number;
+  element: HTMLElement;
   startX: number;
   startY: number;
+  lastX: number;
+  lastTime: number;
+  velocity: number;
   armed: boolean;
 };
 
-const armDistance = 12;
+/** Movement radius before the gesture picks a direction. Small jitter never decides anything. */
+const slopDistance = 10;
+/**
+ * A swipe must be at least this many times more horizontal than vertical.
+ * 1 means 45 degrees, the same split browsers use for `touch-action: pan-y`.
+ * Anything steeper is a browser scroll; anything flatter must be a swipe or it becomes a dead zone.
+ */
+const horizontalRatio = 1;
 const swipeThreshold = 120;
+/** A fast flick counts before reaching the distance threshold. */
+const flickVelocity = 0.6;
+const flickMinDistance = 48;
 const leaveDurationMs = 240;
 const nudgeDurationMs = 160;
 
-// Elements that own their own pointer interaction never start a swipe.
-const interactiveSelector = "button, a, textarea, input, select";
+// Controls that own their own pointer interaction never start a swipe.
+const controlSelector = "button, textarea, input, select";
+// Mouse users drag links natively and select text in the preview, so those never start a mouse swipe.
+// Touch and pen swipe from anywhere else on the card: cards are full of links and a tap still works because a swipe only arms after movement.
+const mouseIgnoreSelector = "a, [data-swipe-ignore]";
+
+// Once a swipe is armed the page must not scroll under the card. React registers touch listeners as passive,
+// so this native non-passive listener is the only way to cancel the browser pan.
+function blockTouchScroll(event: TouchEvent) {
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+}
 
 /**
  * Tinder-style horizontal swipe on a card.
@@ -30,6 +55,17 @@ const interactiveSelector = "button, a, textarea, input, select";
 export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
   const [state, setState] = useState<SwipeState>({ dx: 0, dragging: false, leaving: null });
   const gesture = useRef<Gesture | null>(null);
+
+  function endGesture() {
+    const current = gesture.current;
+    if (current) {
+      current.element.removeEventListener("touchmove", blockTouchScroll);
+      if (current.armed && current.element.hasPointerCapture(current.pointerId)) {
+        current.element.releasePointerCapture(current.pointerId);
+      }
+    }
+    gesture.current = null;
+  }
 
   function finish(direction: SwipeDirection) {
     const leaves = onSwipe(direction);
@@ -48,18 +84,26 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLElement>) {
-    if (state.leaving || !event.isPrimary) {
+    if (state.leaving || !event.isPrimary || gesture.current) {
       return;
     }
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest(interactiveSelector)) {
+    if (target?.closest(controlSelector)) {
       return;
     }
-    // Mouse users select text in the preview; only touch and pen swipe from there.
-    if (event.pointerType === "mouse" && target?.closest("[data-swipe-ignore]")) {
+    if (event.pointerType === "mouse" && target?.closest(mouseIgnoreSelector)) {
       return;
     }
-    gesture.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, armed: false };
+    gesture.current = {
+      pointerId: event.pointerId,
+      element: event.currentTarget,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastTime: event.timeStamp,
+      velocity: 0,
+      armed: false,
+    };
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLElement>) {
@@ -70,15 +114,23 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
     const dx = event.clientX - current.startX;
     const dy = event.clientY - current.startY;
     if (!current.armed) {
-      if (Math.abs(dy) > armDistance && Math.abs(dy) > Math.abs(dx)) {
-        gesture.current = null;
+      if (Math.hypot(dx, dy) < slopDistance) {
         return;
       }
-      if (Math.abs(dx) < armDistance) {
+      // One decision per gesture: mostly horizontal swipes, everything else scrolls.
+      if (Math.abs(dx) < Math.abs(dy) * horizontalRatio) {
+        endGesture();
         return;
       }
       current.armed = true;
-      event.currentTarget.setPointerCapture(event.pointerId);
+      current.element.setPointerCapture(event.pointerId);
+      current.element.addEventListener("touchmove", blockTouchScroll, { passive: false });
+    }
+    const elapsed = event.timeStamp - current.lastTime;
+    if (elapsed > 0) {
+      current.velocity = (event.clientX - current.lastX) / elapsed;
+      current.lastX = event.clientX;
+      current.lastTime = event.timeStamp;
     }
     setState({ dx, dragging: true, leaving: null });
   }
@@ -88,12 +140,15 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
     if (!current || current.pointerId !== event.pointerId) {
       return;
     }
-    gesture.current = null;
-    if (!current.armed) {
+    const armed = current.armed;
+    const velocity = current.velocity;
+    endGesture();
+    if (!armed) {
       return;
     }
     const dx = event.clientX - current.startX;
-    if (Math.abs(dx) >= swipeThreshold) {
+    const flick = Math.abs(dx) >= flickMinDistance && Math.abs(velocity) >= flickVelocity && Math.sign(velocity) === Math.sign(dx);
+    if (Math.abs(dx) >= swipeThreshold || flick) {
       finish(dx < 0 ? "left" : "right");
       return;
     }
@@ -102,7 +157,7 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
 
   function onPointerCancel(event: ReactPointerEvent<HTMLElement>) {
     if (gesture.current?.pointerId === event.pointerId) {
-      gesture.current = null;
+      endGesture();
       setState({ dx: 0, dragging: false, leaving: null });
     }
   }
