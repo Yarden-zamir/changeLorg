@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 export type SwipeDirection = "left" | "right";
 
@@ -34,11 +34,10 @@ const flickMinDistance = 48;
 const leaveDurationMs = 240;
 const nudgeDurationMs = 160;
 
-// Controls that own their own pointer interaction never start a swipe.
+// Controls that own their own pointer interaction never start a swipe. Everything else on the card does,
+// links and preview text included: a click or tap still works because a swipe only arms after movement.
+// Known limit: a horizontal mouse drag over preview text swipes instead of selecting. Vertical selection still works.
 const controlSelector = "button, textarea, input, select";
-// Mouse users drag links natively and select text in the preview, so those never start a mouse swipe.
-// Touch and pen swipe from anywhere else on the card: cards are full of links and a tap still works because a swipe only arms after movement.
-const mouseIgnoreSelector = "a, [data-swipe-ignore]";
 
 // Once a swipe is armed the page must not scroll under the card. React registers touch listeners as passive,
 // so this native non-passive listener is the only way to cancel the browser pan.
@@ -91,9 +90,6 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
     if (target?.closest(controlSelector)) {
       return;
     }
-    if (event.pointerType === "mouse" && target?.closest(mouseIgnoreSelector)) {
-      return;
-    }
     gesture.current = {
       pointerId: event.pointerId,
       element: event.currentTarget,
@@ -123,6 +119,8 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
         return;
       }
       current.armed = true;
+      // A mouse drag has started a text selection by now. Drop it so the card, not the text, follows the pointer.
+      window.getSelection()?.removeAllRanges();
       current.element.setPointerCapture(event.pointerId);
       current.element.addEventListener("touchmove", blockTouchScroll, { passive: false });
     }
@@ -155,6 +153,11 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
     setState({ dx: 0, dragging: false, leaving: null });
   }
 
+  // Links and images start a native drag, which cancels the pointer stream. Never let that happen inside a card.
+  function onDragStart(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+  }
+
   function onPointerCancel(event: ReactPointerEvent<HTMLElement>) {
     if (gesture.current?.pointerId === event.pointerId) {
       endGesture();
@@ -176,7 +179,7 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
   const rightProgress = Math.min(1, Math.max(0, state.dx / swipeThreshold));
 
   return {
-    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
+    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDragStart },
     style,
     leaving: state.leaving,
     leftProgress: state.leaving === "left" ? 1 : leftProgress,

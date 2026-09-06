@@ -105,7 +105,7 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           ) : null}
 
           {preview.trim() ? (
-            <div className="scrollbar-none mt-4 max-h-72 overflow-y-auto rounded-2xl border border-stone-950/10 bg-white/65 px-4 py-3" data-swipe-ignore>
+            <div className="scrollbar-none mt-4 max-h-72 overflow-y-auto rounded-2xl border border-stone-950/10 bg-white/65 px-4 py-3">
               <RenderedText value={preview} />
             </div>
           ) : (
