@@ -219,9 +219,14 @@ Behavior:
 - A gesture picks one axis after 10px of movement. Flatter than 45 degrees is a swipe and the page does not scroll. Steeper is a browser scroll and the card does not move. A short fast flick counts as a swipe.
 - Swipes start anywhere on the card except form controls and buttons, including on links and preview text, with mouse, pen, or touch. A click or tap on a link still opens it. A horizontal mouse drag over preview text swipes instead of selecting text.
 - The action buttons on a card run the same animation as the matching swipe.
+- Desktop cards place Clear or Mark read at the top right, independent of content height. Mobile cards retain bottom action controls.
 - When a card leaves a queue, the card after it takes its place in the viewport. Shelving does not move the viewport even though the shelf above grows.
 - Keyboard: `j`/`k` or arrow keys move the current card, `x` clears or marks read, `s` shelves or unshelves, `o` or Enter opens the source, `n` toggles the note, `z` undoes. Keys are ignored while typing.
 - Every clear, shelf, and unshelf shows an undo toast for a few seconds.
+- Press `?` or select Keyboard shortcuts to open shortcut help. Press `?` or Escape to close it. Help blocks card shortcuts.
+- Additional shortcuts: `u` undoes, `r` restores cleared items, `f` filters to the current source, and `a` shows all sources.
+- Press `p`, `w`, or `t` to focus the profile, window, or order control. Native form keys control the selection.
+- Enter preserves native button and link activation. Held action keys do not repeat; card navigation keys repeat.
 - The control panel shows a restore control when cleared entries exist in the loaded window. It clears the dismissed flag on all of them.
 - The note control is an arrow that expands a text box on the card. Saving a note from the desk shelves the entry. Cmd/Ctrl+Enter saves, Escape closes.
 - Empty queues render a one-line message inside the queue header.

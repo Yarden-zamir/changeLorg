@@ -219,6 +219,7 @@ export default function App() {
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   const scrollAnchor = useRef<ScrollAnchor | null>(null);
   const scrollOnFocus = useRef(false);
+  const shortcutDialog = useRef<HTMLDialogElement>(null);
 
   const selectedProfile = urlState.profile;
   const feedWindow = urlState.feedWindow;
@@ -458,7 +459,35 @@ export default function App() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) {
+      if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) {
+        return;
+      }
+      if (event.key === "?") {
+        event.preventDefault();
+        if (!event.repeat) {
+          if (shortcutDialog.current?.open) shortcutDialog.current.close();
+          else shortcutDialog.current?.showModal();
+        }
+        return;
+      }
+      if (shortcutDialog.current?.open) return;
+      if (event.key === "Enter" && event.target instanceof HTMLElement && event.target.closest("button, a, summary")) return;
+      if (event.repeat && !["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) return;
+      const controlIds: Record<string, string> = { p: "profile-select", w: "window-select", t: "sort-select" };
+      const controlId = controlIds[event.key];
+      if (controlId) {
+        event.preventDefault();
+        document.getElementById(controlId)?.focus();
+        return;
+      }
+      if (event.key === "r") {
+        event.preventDefault();
+        onRestoreCleared();
+        return;
+      }
+      if (event.key === "a") {
+        event.preventDefault();
+        updateUrlState({ sourceId: null, sourceName: null });
         return;
       }
       if (event.key === "z" || event.key === "u") {
@@ -491,6 +520,9 @@ export default function App() {
       } else if (event.key === "n") {
         event.preventDefault();
         onToggleNote(change);
+      } else if (event.key === "f") {
+        event.preventDefault();
+        updateUrlState({ sourceId: change.source_id, sourceName: change.source_name });
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -579,11 +611,21 @@ export default function App() {
             )}
           </section>
 
-          <KeyboardLegend />
+          <button className="self-end rounded-xl border border-stone-950/20 bg-[#fffaf0] px-4 py-2 text-sm font-semibold" onClick={() => shortcutDialog.current?.showModal()} type="button">
+            Keyboard shortcuts <kbd>?</kbd>
+          </button>
         </div>
       </section>
 
       {lastAction ? <UndoToast label={lastAction.label} onUndo={onUndo} /> : null}
+      <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] p-6 text-stone-950 shadow-xl backdrop:bg-stone-950/50">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 id="shortcut-title" className="font-serif text-2xl font-black">Keyboard shortcuts</h2>
+          <button autoFocus className="rounded-xl border border-stone-950 px-3 py-2 text-sm font-bold" onClick={() => shortcutDialog.current?.close()} type="button">Close</button>
+        </div>
+        <p className="mb-4 text-sm text-stone-600">Card actions use the focused card. Press j to select the first card. Shortcuts stay inactive in form fields.</p>
+        <KeyboardLegend />
+      </dialog>
     </main>
   );
 }
@@ -664,7 +706,7 @@ function ControlPanel({
               <Inbox className="h-4 w-4" />
               Profile
             </span>
-            <select className={selectClassName} value={selectedProfile} onChange={(event) => onProfileChange(event.target.value)}>
+            <select id="profile-select" className={selectClassName} value={selectedProfile} onChange={(event) => onProfileChange(event.target.value)}>
               {profiles.map((profile) => (
                 <option key={profile.name} value={profile.name}>
                   {profileLabel(profile.name)} - {profile.source_count} source{profile.source_count === 1 ? "" : "s"}
@@ -678,7 +720,7 @@ function ControlPanel({
               <CalendarDays className="h-4 w-4" />
               Window
             </span>
-            <select className={selectClassName} value={feedWindow} onChange={(event) => onFeedWindowChange(event.target.value as FeedWindow)}>
+            <select id="window-select" className={selectClassName} value={feedWindow} onChange={(event) => onFeedWindowChange(event.target.value as FeedWindow)}>
               {feedWindows.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label} - {item.caption}
@@ -692,7 +734,7 @@ function ControlPanel({
               <LibraryBig className="h-4 w-4" />
               Order
             </span>
-            <select className={selectClassName} value={sort} onChange={(event) => onSortChange(event.target.value as SortKey)}>
+            <select id="sort-select" className={selectClassName} value={sort} onChange={(event) => onSortChange(event.target.value as SortKey)}>
               {sortOptions.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
@@ -750,15 +792,23 @@ function UndoToast({ label, onUndo }: { label: string; onUndo: () => void }) {
 
 function KeyboardLegend() {
   const keys: Array<[string, string]> = [
-    ["j / k", "next / previous"],
+    ["j / Down", "next card"],
+    ["k / Up", "previous card"],
     ["x", "clear or mark read"],
     ["s", "shelf / back to desk"],
-    ["o", "open source"],
+    ["o / Enter", "open source"],
     ["n", "note"],
-    ["z", "undo"],
+    ["Cmd/Ctrl + Enter", "save note (in editor)"],
+    ["Escape", "close note or shortcut help"],
+    ["z / u", "undo"],
+    ["r", "restore cleared items"],
+    ["f", "filter to card source"],
+    ["a", "show all sources"],
+    ["p / w / t", "focus profile / window / order"],
+    ["?", "toggle shortcut help"],
   ];
   return (
-    <div className="hidden flex-wrap items-center gap-x-5 gap-y-2 px-2 text-xs font-semibold text-stone-500 pointer-fine:flex">
+    <div className="grid gap-3 text-sm font-semibold text-stone-600">
       {keys.map(([key, label]) => (
         <span className="inline-flex items-center gap-2" key={key}>
           <kbd className="rounded-md border border-stone-950/20 bg-white px-1.5 py-0.5 font-mono text-[0.7rem] text-stone-800">{key}</kbd>

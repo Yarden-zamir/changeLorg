@@ -113,8 +113,18 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           )}
         </div>
 
-        <div className={`flex flex-col justify-end border-t border-stone-950 p-4 md:border-l md:border-t-0 ${onShelf ? "bg-[#f3e2a8]" : "bg-[#eee6d6]"}`}>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
+        <div className={`flex flex-col justify-end border-t border-stone-950 p-4 md:gap-4 md:border-l md:border-t-0 ${onShelf ? "bg-[#f3e2a8]" : "bg-[#eee6d6]"}`}>
+          <Button
+            className="hidden whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8] md:inline-flex"
+            disabled={swipe.leaving !== null}
+            onClick={() => swipe.trigger("left")}
+            title={`${onShelf ? "Mark read" : "Clear from desk"} (x)`}
+            variant="secondary"
+          >
+            {onShelf ? <Check className="mr-2 h-4 w-4" /> : <X className="mr-2 h-4 w-4" />}
+            {onShelf ? "Mark read" : "Clear from desk"}
+          </Button>
+          <div className="grid grid-cols-2 gap-2 md:mt-auto md:grid-cols-1">
             {change.url ? (
               <a
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-stone-950 bg-white px-3 text-sm font-black text-stone-950 transition-colors hover:bg-amber-100"
@@ -126,8 +136,8 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
                 <ExternalLink className="ml-2 h-3.5 w-3.5" />
               </a>
             ) : null}
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Button className="whitespace-nowrap rounded-xl bg-white px-3 text-stone-950 hover:bg-amber-100" onClick={onShelf ? () => swipe.trigger("left") : () => swipe.trigger("right")} variant="secondary">
+            <div className={`grid grid-cols-[1fr_auto] gap-2 ${onShelf ? "md:grid-cols-1" : ""}`}>
+              <Button className={`whitespace-nowrap rounded-xl bg-white px-3 text-stone-950 hover:bg-amber-100 ${onShelf ? "md:hidden" : ""}`} disabled={swipe.leaving !== null} onClick={onShelf ? () => swipe.trigger("left") : () => swipe.trigger("right")} variant="secondary">
                 {onShelf ? <Check className="mr-2 h-4 w-4" /> : <BookmarkPlus className="mr-2 h-4 w-4" />}
                 {onShelf ? "Mark read" : "Shelf"}
               </Button>
@@ -149,7 +159,7 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
                 Back to desk
               </Button>
             ) : (
-              <Button className="whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8]" onClick={() => swipe.trigger("left")} variant="secondary">
+              <Button className="whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8] md:hidden" disabled={swipe.leaving !== null} onClick={() => swipe.trigger("left")} variant="secondary">
                 <X className="mr-2 h-4 w-4" />
                 Clear from desk
               </Button>
