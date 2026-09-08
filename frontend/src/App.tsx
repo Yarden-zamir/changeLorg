@@ -661,8 +661,8 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
           {pending ? <p role="status" className="fixed bottom-4 right-4 z-20 rounded-xl border border-stone-950 bg-[#fffaf0] px-4 py-2 text-sm font-semibold shadow-lg">Save in progress...</p> : null}
           {!isLoading && sourceCount === 0 ? <section className="rounded-[2rem] border border-stone-950 bg-[#fffaf0] p-6">
             <h2 className="font-serif text-3xl font-black">Build your edition</h2>
-            <p className="my-3 text-sm leading-6">{profiles.length === 0 ? "Create your first profile, then choose sources from the catalog or preview a custom URL." : "This profile has no active sources. Add or enable a source, then fetch its latest changes."}</p>
-            <button className="editor-button editor-primary" onClick={onEdit}>{profiles.length === 0 ? "Create a profile & add sources" : "Add or manage sources"}</button>
+            <p className="my-3 text-sm leading-6">{profiles.length === 0 ? "Paste a website or GitHub link to discover and preview a source. Create a profile when you want to save." : "This profile has no active sources. Add or enable a source, then fetch its latest changes."}</p>
+            <button className="editor-button editor-primary" onClick={onEdit}>{profiles.length === 0 ? "Find your first source" : "Add or manage sources"}</button>
           </section> : null}
 
           <section data-queue="shelf" className="rounded-[2rem] border border-amber-900/30 bg-[#f9d978] p-4 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)] sm:p-5">

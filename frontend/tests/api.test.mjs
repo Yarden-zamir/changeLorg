@@ -111,6 +111,49 @@ test("sends credentials, UUIDv4, owner, and mutation marker with no cache", asyn
   assert.equal(calls[3].options.headers["Content-Type"], "application/json");
 });
 
+test("discovery and profileless preview use owner-bound POST requests with CSRF", async (t) => {
+  await identify(t);
+  const draft = { name: "Releases", plugin: "rss-atom", config: { url: "https://github.com/owner/repo/releases.atom" }, enabled: true };
+  const preview = { changes: [], window: { start: "2026-08-09T00:00:00Z", end: "2026-09-08T00:00:00Z" } };
+  const fetch = t.mock.method(globalThis, "fetch", async (path) => Response.json(path === "/sources/discover" ? [draft] : preview));
+  const controller = new AbortController();
+  const candidates = await api("/sources/discover", { owner: identity.id, method: "POST", body: { url: "owner/repo" }, signal: controller.signal });
+  assert.equal(candidates[0].config.url, draft.config.url);
+  assert.ok(!("profile" in candidates[0].config));
+  const result = await api("/sources/preview", { owner: identity.id, method: "POST", body: candidates[0], signal: controller.signal });
+  assert.deepEqual(result.changes, []);
+  assert.equal(fetch.mock.callCount(), 2);
+  for (const { arguments: [, options] } of fetch.mock.calls) {
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers["X-Changelorg-Owner"], identity.id);
+    assert.equal(options.headers["X-Changelorg-Request"], "1");
+    assert.equal(options.credentials, "include");
+    assert.equal(options.cache, "no-store");
+    assert.ok(options.signal instanceof AbortSignal);
+  }
+  assert.deepEqual(JSON.parse(fetch.mock.calls[0].arguments[1].body), { url: "owner/repo" });
+  assert.ok(!("profile" in JSON.parse(fetch.mock.calls[1].arguments[1].body).config));
+  controller.abort();
+  assert.ok(fetch.mock.calls.every(({ arguments: [, options] }) => options.signal.aborted));
+});
+
+test("discovery distinguishes no feeds from safe 422 and 502 failures", async (t) => {
+  await identify(t);
+  const options = { owner: identity.id, method: "POST", body: { url: "https://example.com" } };
+  t.mock.method(globalThis, "fetch", async () => Response.json([]));
+  assert.deepEqual(await api("/sources/discover", options), []);
+  for (const status of [422, 502]) {
+    const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ detail: "private upstream credentials" }, { status }));
+    await assert.rejects(api("/sources/discover", options), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, status);
+      assert.ok(!error.message.includes("private upstream credentials"));
+      return true;
+    });
+    assert.equal(fetch.mock.callCount(), 1);
+  }
+});
+
 test("creates a persistent UUIDv4 but never replaces an invalid existing token", async (t) => {
   storage.clear();
   await identify(t);

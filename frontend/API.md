@@ -107,6 +107,7 @@ Successful responses use JSON unless the route permits `204` below. Extra respon
 | GET | `/sources` | No body | `Source[]`, including disabled sources |
 | GET | `/plugins` | No body | `Plugin[]` |
 | GET | `/catalog?q={encodedQuery}` | No body | `SourceCreate[]` |
+| POST | `/sources/discover` | `{ url: string }`; 1 to 2000 characters | `SourceCreate[]`; at most 10 candidates without `config.profile` |
 | POST | `/sources/preview` | `SourceCreate` | `{ changes: PreviewChange[], window: TimeWindow }` |
 | POST | `/sources` | `SourceCreate` | Complete `Source` |
 | PATCH | `/sources/{id}` | `SourceCreate` or `{ enabled: boolean }` | Complete `Source` |
@@ -121,6 +122,42 @@ Successful responses use JSON unless the route permits `204` below. Extra respon
 `SourceError` contains `source_id: number`, `source_name: string`, `plugin: string`, and `message: string`.
 The frontend displays only the error count. It does not display raw source errors or API error bodies.
 
+## Source Discovery
+
+1. One search input matches saved sources and optional catalog suggestions by name. Name search is not full-web search.
+2. Absolute HTTP or HTTPS URLs, bare domains, and GitHub `owner/repo` expose an explicit Discover action. Bare inputs use HTTPS.
+3. Keystrokes never trigger discovery or external source fetches. Name queries can request catalog suggestions after a debounce.
+4. Catalog failure does not block link discovery. Discovery requires no catalog preset or profile.
+5. `POST /sources/discover` uses the account, owner, cookie, CSRF, and private-cache rules above. It writes no profiles, sources, changes, or state.
+6. GitHub repository roots, optional `.git` suffixes, `/releases`, `/releases/latest`, and `/releases/tag/...` map to `/releases.atom`.
+7. A release tag or latest-release URL selects the repository's releases feed, not a feed limited to one release.
+8. GitHub `/tags` maps to `/tags.atom`. Direct `/releases.atom` and `/tags.atom` URLs preserve their stream and query string.
+9. Unsupported GitHub paths, such as `/issues`, return `422` rather than silently select a releases feed.
+10. Discovery fetches one normalized target and recognizes RSS/Atom from the body, including valid empty feeds. Suffixes and response media types alone prove nothing.
+11. HTML discovery accepts `<link rel="alternate">` with `application/rss+xml` or `application/atom+xml`. Relative links use the final response URL and first valid `<base href>`.
+12. Candidates pass structural public-URL checks, deduplicate by resolved URL, and stop at 10. Discovery neither resolves candidate DNS nor fetches alternate candidates.
+13. Candidates use `plugin: "rss-atom"`, `enabled: true`, a display name, and `config.url`. They contain no profile and remain unverified until preview.
+14. A successful response with no direct feed or advertised alternates returns `[]`. It does not invent an HTML handler or selectors.
+15. One result automatically selects its handler and starts preview. With multiple results, an explicit choice automatically starts preview.
+16. Preview requires no profile. Save requires explicit profile selection or creation and an explicit save action.
+17. Any draft change invalidates preview, including source name and profile changes. Profile creation that assigns the draft's profile also invalidates preview.
+18. Manual handler, URL, and enrichment controls stay under Advanced, collapsed for RSS/Atom drafts. The custom HTML fallback requires an explicit `article_path_prefix`.
+19. Discovery uses the same public fetch limits and invocation budget as preview. Redirects share that budget; preview has its own invocation.
+20. The shared semaphore permits four concurrent operations across discovery, previews, manual refreshes, and scheduled refreshes. Discovery has no separate capacity pool.
+
+Discovery errors use the shared safe-error display. The following statuses distinguish request failures from a successful empty result:
+
+| Status | Meaning |
+| --- | --- |
+| `401` | Invalid browser identity or rejected GitHub session; resolve `/me` again without an automatic retry. |
+| `412` | Missing or mismatched owner header; resolve `/me` again without an automatic retry. |
+| `403` | Rejected origin or missing CSRF request header. |
+| `422` | Invalid request body, invalid initial URL, or unsupported GitHub path; no source fetch occurs. |
+| `429` | The shared source-fetch semaphore has no available slot. |
+| `502` | Discovery fetch failure, including DNS, redirect, upstream HTTP, response-size, or deadline failures. |
+
+The general request-body limit and authentication-service failures still apply.
+
 ## Mutation Rules
 
 1. Clear and mark-read send `{ dismissed: true }`. The server preserves the shelf flag and note.
@@ -132,12 +169,12 @@ The frontend displays only the error count. It does not display raw source error
 7. The server validates ownership of every ID in a batch before it changes any state.
 8. The frontend serializes feed mutations. A failed mutation requires a feed reload before another feed mutation.
 9. The source editor previews the last 30 days and displays at most 10 results. Preview writes no source or cached data.
-10. A source draft change requires a new preview before save. An empty preview still permits save.
+10. Any source draft change requires a new preview before save, including name and profile changes. An empty preview still permits save.
 11. Save does not fetch source changes. Fetch latest explicitly refreshes the saved source.
 12. Disable excludes a source from the feed and refreshes, but preserves its cached data and state.
 13. Source deletion deletes its cached changes, shelf state, and notes. Profile deletion also deletes its sources.
 14. Profile rename updates its source membership. Profile names require 1 to 100 characters; source names require 1 to 200 characters.
-15. Every source config contains an existing `profile` and an absolute HTTP or HTTPS `url` without URL credentials.
+15. Every source config contains an absolute HTTP or HTTPS `url` without URL credentials. Save requires an existing `profile`; discovery and preview do not.
 16. RSS/Atom config supports `include_any` and `exclude_any` as term arrays, plus an optional `enrichment_profile`.
 17. HTML news config requires `article_path_prefix`. Its optional `limit` is an integer from 1 to 100.
 18. Plugin switches remove incompatible fields. Other config fields remain intact for the same plugin.
@@ -155,6 +192,11 @@ Card removal preserves the next card position. Failed swipe mutations return the
 Existing card and navigation shortcuts remain available. The `e` shortcut opens the source editor.
 Form fields and modal dialogs block feed shortcuts. Cmd/Ctrl+Enter saves a note; Escape closes its editor.
 
-Run `npm test` for API safety checks. Run `npm run build` for TypeScript and production bundle checks.
+Run `npm test` in `frontend` for discovery-input unit tests and API safety checks.
+Run `npm run build` in `frontend` for TypeScript and production bundle checks.
+Run `uv run pytest` at the repository root for backend discovery, public-network, preview, and API tests.
+Verify normalization, valid empty feeds, alternate resolution, candidate limits, deferred candidate fetches, no persistence, error statuses, and shared concurrency.
+Verify automatic preview after result selection, profile-free preview, explicit save, and preview invalidation after every draft change in the editor.
+These checks describe local editor verification, not an updated live deployment.
 [Behavior Spec](../docs/spec.md) defines private server-backed feeds. [User Data](../docs/user-data.md) defines ownership, storage, and explicit imports.
 The session reset rules above define the exception to the account-token and owner-header requirements.

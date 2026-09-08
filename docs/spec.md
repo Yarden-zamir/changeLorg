@@ -27,7 +27,8 @@ Stored sources also include `id`, `owner_id`, `created_at`, and `updated_at`. Th
 Common config fields:
 
 - `profile`: The source belongs to exactly one profile through `config.profile`.
-- Web requests require an explicit profile that exists for the current owner. The CLI defaults to `dev` when omitted.
+- Web source saves require an explicit profile that exists for the current owner. Discovery and preview require no profile.
+- The CLI defaults to `dev` when the profile is omitted.
 
 Behavior:
 
@@ -162,11 +163,27 @@ Key: `html-news`
 - Optional `limit` accepts an integer from 1 to 100.
 - Article requests use the same network budget as the index request.
 
+### Source Discovery
+
+- `POST /sources/discover` accepts `{ "url": "..." }` with 1 to 2000 characters and returns at most 10 `SourceCreate` drafts.
+- Input accepts absolute HTTP or HTTPS URLs, bare domains with optional paths, and GitHub `owner/repo` shorthand. Bare inputs use HTTPS.
+- GitHub repository roots, optional `.git` suffixes, `/releases`, `/releases/latest`, and `/releases/tag/...` map to `/releases.atom`.
+- The releases feed covers all repository releases, not only the supplied tag or latest release.
+- GitHub `/tags` maps to `/tags.atom`. Direct `/releases.atom` and `/tags.atom` URLs retain their stream and query string.
+- Other GitHub paths, such as `/issues`, are rejected rather than mapped to a releases feed.
+- Discovery fetches one normalized target under the public network limits below. It recognizes RSS/Atom from the response body, including valid empty feeds.
+- HTML discovery accepts `<link rel="alternate">` with RSS/Atom media types. Relative URLs use the final response URL and the first valid `<base href>`.
+- Discovery rejects structurally unsafe candidate URLs and returns at most 10 distinct URLs. It does not resolve candidate DNS or fetch alternate candidates.
+- Preview verifies a selected candidate through the normal public fetch checks. An advertised alternate is not proof of a valid feed.
+- Discovery returns `[]` when the response contains no direct feed or structurally safe advertised alternate.
+- Discovery never guesses HTML selectors or persists profiles, sources, changes, or state.
+- Discovery uses the account and request-header checks. Errors include `401`, `412`, `403`, `422`, `429`, and `502`, as defined in the frontend contract.
+
 ### Public Fetches and Previews
 
 - `POST /sources/preview` accepts a built-in source draft and previews the last 30 days.
 - Preview returns at most 10 changes and the window. It never writes profiles, sources, changes, or state.
-- A draft change requires another preview before save. An empty preview permits save.
+- Any draft change requires another preview before save, including source name and profile changes. An empty preview permits save.
 - Source save never fetches changes. Explicit refresh fetches the saved source.
 - Source URLs require absolute HTTP or HTTPS URLs, ports 80 or 443, and no URL credentials.
 - Every source request validates all DNS answers and rejects private, loopback, link-local, reserved, and other non-public addresses.
@@ -176,7 +193,8 @@ Key: `html-news`
 - Each source invocation allows at most 12 requests, a 60-second total deadline, and at most 200 candidate entries.
 - Redirects, article requests, and enrichment requests share the invocation budget.
 - Compressed responses are rejected. Revisit bounded decompression if a required source needs compression.
-- A global limit permits at most four concurrent source network operations across previews, manual refreshes, and scheduled refreshes.
+- Discovery uses the same invocation budget and global semaphore as other source network operations.
+- A global limit permits at most four concurrent source network operations across discovery, previews, manual refreshes, and scheduled refreshes.
 - Initially, concurrency and invocation budgets bound network work. No exact per-owner preview rate or cooldown forms part of this contract.
 - Revisit per-owner rate limits if abuse or owner starvation occurs.
 
@@ -236,6 +254,7 @@ Required contract routes:
 - `POST /profiles`
 - `PATCH /profiles/{encodedName}`
 - `DELETE /profiles/{encodedName}`
+- `POST /sources/discover`
 - `POST /sources/preview`
 - `POST /sources`
 - `PATCH /sources/{source_id}`
@@ -285,7 +304,15 @@ Behavior:
 - Loads cached changes from the backend.
 - Lists the owner's profiles, including empty profiles, and permits profile creation, rename, and deletion.
 - Reads durable backend data. The server refreshes enabled sources hourly with a default 30-day fetch window.
-- Supports source catalog search, preview, creation, edit, enable, disable, deletion, and explicit refresh.
+- Supports source search, discovery, preview, creation, edit, enable, disable, deletion, and explicit refresh.
+- One source search input matches names against saved sources and optional catalog suggestions. It does not search the full web.
+- URLs, bare domains, and GitHub `owner/repo` offer an explicit Discover action. Keystrokes never trigger discovery or external source fetches.
+- Name queries can request catalog suggestions after a debounce. Catalog failure does not block link discovery; no preset is required.
+- A single discovery result automatically selects the RSS/Atom handler and starts preview. Multiple results require a choice that automatically starts preview.
+- Discovery and preview work without a profile. Profile creation, profile selection, and source save remain explicit actions.
+- Any draft change invalidates preview, including source name, profile selection, or a newly created profile assigned to the draft.
+- Manual handler, URL, and enrichment controls stay under Advanced, collapsed for RSS/Atom drafts.
+- Custom HTML news is an advanced fallback that requires an explicit `article_path_prefix`. The editor never guesses selectors.
 - Resolves `/me` before account data and preserves the anonymous capability across sign-in, sign-out, and imports.
 - Offers GitHub sign-in when authentication is enabled. All GitHub users can sign in.
 - The account-error screen offers explicit cookie reset without loss of anonymous data, including when authentication is disabled.

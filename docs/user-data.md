@@ -37,7 +37,7 @@ This migration is irreversible without an external copy. A SQLite-only release c
 - Each source has one `owner_id`. Changes and their state inherit ownership from their source.
 - Profiles use the key `(owner_id, name)`. Empty profiles remain explicit records.
 - Each source belongs to one profile through `config.profile`, not a separate membership list.
-- Web source requests require an existing profile for the current owner.
+- Source creation and updates require an existing profile for the current owner. Discovery and preview require no profile.
 - Profile lists include empty profiles. `source_count` counts enabled sources only.
 - The same public URL under different owners represents separate private subscriptions and changes.
 - Owner data includes profiles, sources, cached changes, dismissed flags, shelf flags, and notes.

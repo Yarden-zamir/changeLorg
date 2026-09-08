@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from changelorg import store
 from changelorg.auth import Identity, request_identity
+from changelorg.discovery import discover_sources, normalize_discovery_url
 from changelorg.enrichment import PROFILES
 from changelorg.models import (
     Change,
@@ -29,7 +30,11 @@ from changelorg.models import (
     TimeWindow,
     utc_now,
 )
-from changelorg.network import SOURCE_FETCH_SLOTS, validate_source_config
+from changelorg.network import (
+    SOURCE_FETCH_SLOTS,
+    PublicFetchError,
+    validate_source_config,
+)
 from changelorg.plugin import PluginConfigError, PluginManager
 from changelorg.plugins.html_news import HtmlNewsPlugin
 from changelorg.plugins.rss_atom import RssAtomPlugin
@@ -53,6 +58,10 @@ class BrowserStateImport(BaseModel):
 class SourcePreview(BaseModel):
     window: TimeWindow
     changes: list[ChangeInput]
+
+
+class SourceDiscoveryRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -320,6 +329,22 @@ def create_app() -> FastAPI:
                     502, "Source preview failed; check the URL and configuration"
                 ) from None
         return SourcePreview(window=window, changes=changes[:10])
+
+    @app.post("/sources/discover", response_model=list[SourceCreate])
+    def discover(
+        body: SourceDiscoveryRequest, identity: CurrentIdentity
+    ) -> list[SourceCreate]:
+        try:
+            url = normalize_discovery_url(body.url)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        with fetch_slot():
+            try:
+                return discover_sources(str(url))
+            except PublicFetchError:
+                raise HTTPException(
+                    502, "Source discovery failed; check the link or retry later"
+                ) from None
 
     @app.post("/sources", response_model=Source, status_code=201)
     def create_source(body: SourceCreate, identity: CurrentIdentity) -> Source:

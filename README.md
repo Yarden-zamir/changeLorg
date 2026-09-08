@@ -7,7 +7,7 @@ changelorg provides:
 - A uv Python FastAPI backend.
 - A uv Python Typer CLI.
 - A local Python plugin system for adding new source types.
-- A React feed and source editor with catalog search, previews, and profile management.
+- A React feed and source editor with URL/GitHub feed discovery, saved-source search, optional catalog suggestions, previews, and explicit profile saves.
 
 ## Quick Start
 
