@@ -70,11 +70,27 @@ KitSHn removes the `KITSHN_` prefix from GitHub variables and secrets before Com
 | Variable `KITSHN_CHANGELORG_AUTH_ENABLED` | `CHANGELORG_AUTH_ENABLED` | `true`, required |
 | Variable `KITSHN_OAUTH2_PROXY_CLIENT_ID` | `OAUTH2_PROXY_CLIENT_ID` | GitHub OAuth App client ID, required |
 | Secret `KITSHN_OAUTH2_PROXY_CLIENT_SECRET` | `OAUTH2_PROXY_CLIENT_SECRET` | GitHub OAuth App client secret, required |
-| Secret `KITSHN_OAUTH2_PROXY_COOKIE_SECRET` | `OAUTH2_PROXY_COOKIE_SECRET` | 32 random bytes, base64 encoded, required |
+| Secret `KITSHN_OAUTH2_PROXY_COOKIE_SECRET` | `OAUTH2_PROXY_COOKIE_SECRET` | 32 random bytes, URL-safe base64 encoded, required |
 | Variable `KITSHN_CHANGELORG_PUBLIC_ORIGIN` | `CHANGELORG_PUBLIC_ORIGIN` | Optional `https://changelorg.yarden-zamir.com`, without a trailing slash |
 | Variable `KITSHN_CHANGELORG_CORS_ORIGINS` | `CHANGELORG_CORS_ORIGINS` | Optional additional trusted frontend origins, comma-separated |
 
-Generate the cookie secret with `openssl rand -base64 32`. Store it as a secret, not in this repository.
+Generate and store the cookie secret without a file or terminal output:
+
+```sh
+uv run --no-project - <<'PY'
+import base64
+import secrets
+import subprocess
+
+secret = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("ascii")
+subprocess.run(
+    ["gh", "secret", "set", "KITSHN_OAUTH2_PROXY_COOKIE_SECRET", "--repo", "Yarden-zamir/changeLorg", "--env", "prod"],
+    input=secret, text=True, check=True,
+)
+PY
+```
+
+Standard base64 can contain characters that the proxy rejects. Replacement of this secret signs out existing users.
 Never print real parameters with `docker compose config`. Use `docker compose config --quiet` for real credentials.
 
 Compose substitutes empty credentials so disabled profiles need no secrets.
