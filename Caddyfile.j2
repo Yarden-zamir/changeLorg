@@ -3,5 +3,23 @@ changelorg.yarden-zamir.com
 {%- else -%}
 pr.{{ environment.removeprefix("pr-") }}.changelorg.yarden-zamir.com
 {%- endif %} {
-    reverse_proxy unix//{{ paths.default_socket }}
+    request_header -Authorization
+    request_header -Remote-User
+    request_header -X-Auth-Request-*
+    request_header -X-Forwarded-*
+
+    handle /auth/* {
+        reverse_proxy unix//{{ paths.socket }}/auth.sock {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Uri {uri}
+            # The API reads these headers internally. Never expose the GitHub token to the browser.
+            header_down -X-Auth-Request-*
+            header_down -X-Forwarded-Access-Token
+            header_down -Authorization
+        }
+    }
+
+    handle {
+        reverse_proxy unix//{{ paths.default_socket }}
+    }
 }

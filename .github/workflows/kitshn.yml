@@ -11,6 +11,10 @@ permissions:
   contents: read
   deployments: write
 
+concurrency:
+  group: changelorg-deploy
+  cancel-in-progress: false
+
 jobs:
   call:
     uses: Yarden-zamir/kitshn/.github/workflows/deploy.yml@main

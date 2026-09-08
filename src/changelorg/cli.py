@@ -11,12 +11,24 @@ from rich.console import Console
 from rich.table import Table
 
 from changelorg.config import plugin_dirs
-from changelorg.models import SourceCreate, SourceUpdate
+from changelorg.models import (
+    DEFAULT_OWNER_ID,
+    Change,
+    SourceCreate,
+    SourceUpdate,
+    validate_owner_id,
+)
 from changelorg.plugin import default_plugin_manager
 from changelorg.service import generate_changes
-from changelorg.store import add_source, delete_source, init_db, list_changes, list_sources, update_source
+from changelorg.store import (
+    add_source,
+    delete_source,
+    init_db,
+    list_changes,
+    list_sources,
+    update_source,
+)
 from changelorg.timeutils import parse_window
-
 
 app = typer.Typer(help="Track changelog/news sources and generate time-windowed change feeds.")
 sources_app = typer.Typer(help="Manage subscribed sources.")
@@ -51,8 +63,14 @@ def _parse_config(pairs: list[str]) -> dict[str, str | list[str]]:
 
 @app.callback()
 def main(
-    db: Annotated[Path | None, typer.Option("--db", help="SQLite database path.")] = None,
+    ctx: typer.Context,
+    db: Annotated[Path | None, typer.Option("--db", help="DuckDB path. Existing SQLite files migrate once without a backup.")] = None,
+    owner: Annotated[str, typer.Option("--owner", help="Source owner: github:<numeric> or anon:<sha256>.")] = DEFAULT_OWNER_ID,
 ) -> None:
+    try:
+        ctx.obj = {"owner_id": validate_owner_id(owner)}
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--owner") from exc
     if db is not None:
         os.environ["CHANGELORG_DB"] = str(db.expanduser())
 
@@ -93,29 +111,32 @@ def serve(
 
 @sources_app.command("add")
 def add(
+    ctx: typer.Context,
     name: Annotated[str, typer.Argument(help="Human-readable source name.")],
     plugin: Annotated[str, typer.Option("--plugin", "-p", help="Plugin key.")] = "rss-atom",
     config: Annotated[list[str], typer.Option("--config", "-c", help="Plugin config KEY=VALUE.")] = [],
 ) -> None:
-    source = add_source(SourceCreate(name=name, plugin=plugin, config=_parse_config(config)))
+    source = add_source(SourceCreate(name=name, plugin=plugin, config=_parse_config(config)), owner_id=ctx.obj["owner_id"])
     console.print(f"Added source {source.id}: {source.name}")
 
 
 @sources_app.command("add-rss")
 def add_rss(
+    ctx: typer.Context,
     name: Annotated[str, typer.Argument(help="Human-readable source name.")],
     url: Annotated[str, typer.Argument(help="RSS or Atom feed URL.")],
 ) -> None:
-    source = add_source(SourceCreate(name=name, plugin="rss-atom", config={"url": url}))
+    source = add_source(SourceCreate(name=name, plugin="rss-atom", config={"url": url}), owner_id=ctx.obj["owner_id"])
     console.print(f"Added RSS/Atom source {source.id}: {source.name}")
 
 
 @sources_app.command("list")
 def list_(
+    ctx: typer.Context,
     enabled: Annotated[bool | None, typer.Option(help="Filter by enabled state.")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output JSON.")] = False,
 ) -> None:
-    sources = list_sources(enabled=enabled)
+    sources = list_sources(enabled=enabled, owner_id=ctx.obj["owner_id"])
     if json_output:
         _dump_json([source.model_dump(mode="json") for source in sources])
         return
@@ -132,27 +153,27 @@ def list_(
 
 
 @sources_app.command("remove")
-def remove(source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> None:
+def remove(ctx: typer.Context, source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> None:
     try:
-        delete_source(source_id)
+        delete_source(source_id, owner_id=ctx.obj["owner_id"])
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
     console.print(f"Removed source {source_id}")
 
 
 @sources_app.command("enable")
-def enable(source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> None:
+def enable(ctx: typer.Context, source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> None:
     try:
-        source = update_source(source_id, SourceUpdate(enabled=True))
+        source = update_source(source_id, SourceUpdate(enabled=True), owner_id=ctx.obj["owner_id"])
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
     console.print(f"Enabled source {source.id}: {source.name}")
 
 
 @sources_app.command("disable")
-def disable(source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> None:
+def disable(ctx: typer.Context, source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> None:
     try:
-        source = update_source(source_id, SourceUpdate(enabled=False))
+        source = update_source(source_id, SourceUpdate(enabled=False), owner_id=ctx.obj["owner_id"])
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
     console.print(f"Disabled source {source.id}: {source.name}")
@@ -160,6 +181,7 @@ def disable(source_id: Annotated[int, typer.Argument(help="Source ID.")]) -> Non
 
 @changes_app.command("generate")
 def generate(
+    ctx: typer.Context,
     since: Annotated[str, typer.Option(help="Duration like 7d or ISO datetime/date.")] = "7d",
     until: Annotated[str | None, typer.Option(help="ISO datetime/date; defaults to now.")] = None,
     source: Annotated[list[int] | None, typer.Option("--source", "-s", help="Source ID filter.")] = None,
@@ -167,7 +189,7 @@ def generate(
     json_output: Annotated[bool, typer.Option("--json", help="Output JSON.")] = False,
 ) -> None:
     window = parse_window(since=since, until=until)
-    result = generate_changes(window=window, source_ids=source, limit=limit)
+    result = generate_changes(window=window, source_ids=source, limit=limit, owner_id=ctx.obj["owner_id"])
     if json_output:
         _dump_json(result.model_dump(mode="json"))
         return
@@ -178,6 +200,7 @@ def generate(
 
 @changes_app.command("list")
 def list_cached(
+    ctx: typer.Context,
     since: Annotated[str | None, typer.Option(help="Duration like 7d or ISO datetime/date.")] = None,
     until: Annotated[str | None, typer.Option(help="ISO datetime/date; defaults to now.")] = None,
     source: Annotated[list[int] | None, typer.Option("--source", "-s", help="Source ID filter.")] = None,
@@ -185,14 +208,14 @@ def list_cached(
     json_output: Annotated[bool, typer.Option("--json", help="Output JSON.")] = False,
 ) -> None:
     window = parse_window(since=since, until=until) if since is not None or until is not None else None
-    changes = list_changes(window=window, source_ids=source, limit=limit)
+    changes = list_changes(window=window, source_ids=source, limit=limit, owner_id=ctx.obj["owner_id"])
     if json_output:
         _dump_json([change.model_dump(mode="json") for change in changes])
         return
     _print_changes(changes, title="Cached Changes")
 
 
-def _print_changes(changes: list[object], title: str) -> None:
+def _print_changes(changes: list[Change], title: str) -> None:
     table = Table(title=title)
     table.add_column("Published")
     table.add_column("Source")
@@ -200,9 +223,9 @@ def _print_changes(changes: list[object], title: str) -> None:
     table.add_column("URL")
     for change in changes:
         table.add_row(
-            getattr(change, "published_at").strftime("%Y-%m-%d %H:%M"),
-            getattr(change, "source_name"),
-            getattr(change, "title"),
-            getattr(change, "url") or "",
+            change.published_at.strftime("%Y-%m-%d %H:%M"),
+            change.source_name,
+            change.title,
+            change.url or "",
         )
     console.print(table)

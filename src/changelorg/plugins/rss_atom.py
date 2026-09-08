@@ -5,10 +5,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 import feedparser
-import httpx
 
-from changelorg.enrichment import enrich_change, profile_for
+from changelorg.enrichment import PROFILES, enrich_change, profile_for
 from changelorg.models import ChangeInput, Source, TimeWindow
+from changelorg.network import (
+    MAX_ENTRIES,
+    PublicFetcher,
+    PublicFetchError,
+    RequestBudgetExceeded,
+    validate_public_url,
+    validate_source_config,
+)
 from changelorg.plugin import PluginConfigError
 
 
@@ -69,27 +76,28 @@ class RssAtomPlugin:
     key = "rss-atom"
     name = "RSS / Atom"
     description = "Fetches entries from RSS and Atom feeds."
-    config_schema = {
+    config_schema: dict[str, object] = {
         "type": "object",
         "required": ["url"],
         "properties": {
             "url": {"type": "string", "format": "uri"},
             "user_agent": {"type": "string"},
+            "profile": {"type": "string"},
+            "enrichment_profile": {"type": "string", "enum": list(PROFILES)},
             "include_any": {
                 "description": "Only keep entries containing at least one of these case-insensitive terms.",
-                "items": {"type": "string"},
-                "type": "array",
+                "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}],
             },
             "exclude_any": {
                 "description": "Drop entries containing any of these case-insensitive terms.",
-                "items": {"type": "string"},
-                "type": "array",
+                "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}],
             },
         },
-        "additionalProperties": True,
+        "additionalProperties": False,
     }
 
     def fetch(self, source: Source, window: TimeWindow) -> list[ChangeInput]:
+        validate_source_config(source)
         url = source.config.get("url")
         if not isinstance(url, str) or not url.strip():
             raise PluginConfigError("rss-atom source config requires a non-empty url")
@@ -100,29 +108,27 @@ class RssAtomPlugin:
             raise PluginConfigError("rss-atom config 'enrichment_profile' must be a string")
         enrichment_profile = profile_for(url, enrichment_profile_name)
 
-        headers = {"User-Agent": source.config.get("user_agent", "changelorg/0.1")}
-        with httpx.Client(follow_redirects=True, timeout=20.0, headers=headers) as client:
-            response = client.get(url)
-            response.raise_for_status()
+        client = PublicFetcher(user_agent=source.config.get("user_agent", "changelorg/0.1"))
+        response = client.get(url)
+        enrichment_budget_exhausted = False
 
         def fetch_link(link: str) -> str | None:
+            nonlocal enrichment_budget_exhausted
             try:
-                with httpx.Client(follow_redirects=True, timeout=20.0, headers=headers) as linked_client:
-                    linked_response = linked_client.get(link)
-                    linked_response.raise_for_status()
-            except httpx.HTTPError:
+                return client.get(str(validate_public_url(link, base_url=response.url))).text
+            except RequestBudgetExceeded:
+                enrichment_budget_exhausted = True
                 return None
-            return linked_response.text
 
         parsed_feed = feedparser.parse(response.content)
         feed_title = str(getattr(parsed_feed.feed, "title", "")) if hasattr(parsed_feed, "feed") else ""
         entries = getattr(parsed_feed, "entries", [])
         if not entries and getattr(parsed_feed, "bozo", False):
-            error = getattr(parsed_feed, "bozo_exception", None)
-            raise PluginConfigError(f"feed could not be parsed: {error}")
+            raise PublicFetchError("Source feed could not be parsed")
 
         changes: list[ChangeInput] = []
-        for entry in entries:
+        for entry in entries[:MAX_ENTRIES]:
+            client.check_deadline()
             published_at = _entry_datetime(entry, window)
             if published_at < window.start or published_at > window.end:
                 continue
@@ -148,6 +154,8 @@ class RssAtomPlugin:
                 profile=enrichment_profile,
                 fetch_link=fetch_link,
             )
+            if enrichment_budget_exhausted:
+                enriched.quality_flags.append("enrichment_budget_exhausted")
 
             external_id = _entry_value(entry, "id") or _entry_value(entry, "guid") or link
             changes.append(
@@ -168,4 +176,5 @@ class RssAtomPlugin:
                     },
                 )
             )
+        client.check_deadline()
         return changes

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Protocol
@@ -37,7 +38,7 @@ def plugin_info(plugin: SourcePlugin) -> PluginInfo:
 
 
 class PluginManager:
-    def __init__(self, plugins: list[SourcePlugin] | None = None) -> None:
+    def __init__(self, plugins: Sequence[SourcePlugin] | None = None) -> None:
         self._plugins: dict[str, SourcePlugin] = {}
         for plugin in plugins or []:
             self.register(plugin)
@@ -57,7 +58,7 @@ class PluginManager:
         except KeyError as exc:
             raise PluginError(f"plugin {key!r} is not registered") from exc
 
-    def list(self) -> list[PluginInfo]:
+    def list(self) -> Sequence[PluginInfo]:
         return [plugin_info(plugin) for plugin in sorted(self._plugins.values(), key=lambda item: item.key)]
 
 

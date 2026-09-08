@@ -1,11 +1,18 @@
 from datetime import datetime, timezone
 
 from changelorg.models import ChangeInput, ChangeUpdate, SourceCreate, TimeWindow
-from changelorg.store import add_source, init_db, list_changes, list_sources, update_change, upsert_changes
+from changelorg.store import (
+    add_source,
+    init_db,
+    list_changes,
+    list_sources,
+    update_change,
+    upsert_changes,
+)
 
 
 def test_source_and_change_roundtrip(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     init_db(db_path)
     source = add_source(SourceCreate(name="GitHub Blog", config={"url": "https://github.blog/changelog/feed/"}), db_path)
 
@@ -38,7 +45,7 @@ def test_source_and_change_roundtrip(tmp_path) -> None:
 
 
 def test_change_inherits_source_profile_from_config(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     source = add_source(SourceCreate(name="Steam", config={"profile": "games", "url": "https://example.com/feed.xml"}), db_path)
     upsert_changes(
         source.id,
@@ -52,7 +59,7 @@ def test_change_inherits_source_profile_from_config(tmp_path) -> None:
 
 
 def test_empty_source_filter_returns_no_changes(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     source = add_source(SourceCreate(name="Feed", config={"url": "https://example.com/feed.xml"}), db_path)
     upsert_changes(
         source.id,
@@ -64,7 +71,7 @@ def test_empty_source_filter_returns_no_changes(tmp_path) -> None:
 
 
 def test_upsert_changes_deduplicates_by_external_id(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     source = add_source(SourceCreate(name="Feed", config={"url": "https://example.com/feed.xml"}), db_path)
     published_at = datetime(2026, 7, 4, 10, tzinfo=timezone.utc)
 
@@ -78,7 +85,7 @@ def test_upsert_changes_deduplicates_by_external_id(tmp_path) -> None:
 
 
 def test_update_change_state_survives_upsert(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     source = add_source(SourceCreate(name="Feed", config={"url": "https://example.com/feed.xml"}), db_path)
     published_at = datetime(2026, 7, 4, 10, tzinfo=timezone.utc)
     upsert_changes(source.id, [ChangeInput(external_id="same", title="Old", published_at=published_at)], db_path)
@@ -95,7 +102,7 @@ def test_update_change_state_survives_upsert(tmp_path) -> None:
 
 
 def test_list_changes_hides_dismissed_by_default(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     source = add_source(SourceCreate(name="Feed", config={"url": "https://example.com/feed.xml"}), db_path)
     published_at = datetime(2026, 7, 4, 10, tzinfo=timezone.utc)
     upsert_changes(source.id, [ChangeInput(external_id="same", title="Item", published_at=published_at)], db_path)
@@ -108,7 +115,7 @@ def test_list_changes_hides_dismissed_by_default(tmp_path) -> None:
 
 
 def test_dismissed_change_stays_hidden_after_refetch(tmp_path) -> None:
-    db_path = tmp_path / "changelorg.db"
+    db_path = tmp_path / "changelorg.duckdb"
     source = add_source(SourceCreate(name="Feed", config={"url": "https://example.com/feed.xml"}), db_path)
     published_at = datetime(2026, 7, 4, 10, tzinfo=timezone.utc)
     upsert_changes(source.id, [ChangeInput(external_id="same", title="Old", published_at=published_at)], db_path)

@@ -2,7 +2,10 @@ import { BookmarkCheck, CalendarDays, Inbox, LibraryBig, Newspaper, Undo2 } from
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { ChangeCard } from "./components/ChangeCard";
+import { AccountArea } from "./components/AccountArea";
+import { SourceEditor } from "./components/SourceEditor";
 import { Badge } from "./components/ui/badge";
+import { anonymousTokenKey, api, errorMessage, getIdentity, identityInvalidatedEvent, invalidateIdentity, resetSession, type Identity, type Profile } from "./lib/api";
 import { changeKey, dateValue, openChange, type CardLocation, type Change, type ViewChange } from "./lib/changes";
 
 type UserChangeState = {
@@ -10,12 +13,10 @@ type UserChangeState = {
   saved?: boolean;
   note?: string;
 };
-type UserStateByChange = Record<string, UserChangeState>;
 type SortKey = "newest" | "oldest" | "source";
 type FeedWindow = "24h" | "7d" | "30d" | "90d" | "365d";
-type ProfileName = "dev" | "games" | string;
+type ProfileName = string;
 type SourceFilter = { id: number; name: string } | null;
-type Profile = { name: ProfileName; source_count: number };
 type UrlState = {
   profile: ProfileName;
   feedWindow: FeedWindow;
@@ -26,8 +27,9 @@ type UrlState = {
 /** The last state change, kept so one tap can undo a mis-swipe. */
 type LastAction = {
   changeKey: string;
+  id: number;
   label: string;
-  previous: UserChangeState | undefined;
+  previous: UserChangeState;
 };
 /** Where the viewport must land after a card leaves a queue. */
 type ScrollAnchor = {
@@ -35,12 +37,10 @@ type ScrollAnchor = {
   top: number;
 };
 
-const apiUrl = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
-const userStateStorageKey = "changelorg:user-state:v1";
 const undoTimeoutMs = 8000;
 const anchorTopMin = 16;
 const defaultUrlState: UrlState = {
-  profile: "dev",
+  profile: "",
   feedWindow: "7d",
   sort: "newest",
   sourceId: null,
@@ -61,33 +61,8 @@ const sortOptions: Array<{ value: SortKey; label: string }> = [
   { value: "source", label: "Group by source" },
 ];
 
-async function fetchChanges(feedWindow: FeedWindow, profile: ProfileName): Promise<Change[]> {
-  const response = await fetch(`${apiUrl}/changes?since=${feedWindow}&limit=200&include_dismissed=true&profile=${encodeURIComponent(profile)}`);
-  if (!response.ok) {
-    throw new Error(`Could not load changes: ${response.status}`);
-  }
-  return response.json();
-}
-
-async function fetchProfiles(): Promise<Profile[]> {
-  const response = await fetch(`${apiUrl}/profiles`);
-  if (!response.ok) {
-    throw new Error(`Could not load profiles: ${response.status}`);
-  }
-  return response.json();
-}
-
-function readUserState(): UserStateByChange {
-  try {
-    const raw = localStorage.getItem(userStateStorageKey);
-    if (!raw) {
-      return {};
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as UserStateByChange) : {};
-  } catch {
-    return {};
-  }
+async function fetchChanges(owner: string, feedWindow: FeedWindow, profile: ProfileName, signal: AbortSignal): Promise<Change[]> {
+  return api<Change[]>(`/changes?since=${feedWindow}&limit=200&include_dismissed=true&profile=${encodeURIComponent(profile)}`, { owner, signal });
 }
 
 function isFeedWindow(value: string | null): value is FeedWindow {
@@ -102,7 +77,7 @@ function parseSourceId(value: string | null): number | null {
   if (!value) {
     return null;
   }
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
@@ -127,7 +102,7 @@ function readUrlState(): UrlState {
 
 function urlForState(state: UrlState) {
   const params = new URLSearchParams();
-  params.set("profile", state.profile);
+  if (state.profile) params.set("profile", state.profile);
   params.set("since", state.feedWindow);
   params.set("sort", state.sort);
   if (state.sourceId !== null) {
@@ -138,16 +113,6 @@ function urlForState(state: UrlState) {
   }
 
   return `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-}
-
-function normalizeState(state: UserChangeState): UserChangeState | null {
-  const note = state.note?.trim() ? state.note : undefined;
-  const normalized = {
-    dismissed: state.dismissed || undefined,
-    saved: state.saved || undefined,
-    note,
-  } satisfies UserChangeState;
-  return normalized.dismissed || normalized.saved || normalized.note ? normalized : null;
 }
 
 function profileLabel(profile: ProfileName) {
@@ -204,24 +169,146 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 export default function App() {
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const currentIdentity = useRef<Identity | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [error, setError] = useState("");
+  const [resetPending, setResetPending] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const resetLock = useRef(false);
+  const [revision, setRevision] = useState(0);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const request = useRef(0);
+  const refreshProfiles = useRef(true);
+
+  async function reload(force = true) {
+    if (resetLock.current) return;
+    if (force) refreshProfiles.current = true;
+    const ticket = ++request.current;
+    try {
+      const next = await getIdentity();
+      if (ticket !== request.current) return;
+      const changed = currentIdentity.current?.id !== next.id || currentIdentity.current?.authenticated !== next.authenticated;
+      if (changed) {
+        currentIdentity.current = null;
+        setIdentity(null);
+        setProfiles([]);
+        setEditorOpen(false);
+      }
+      if (changed || refreshProfiles.current) {
+        const loaded = await api<Profile[]>("/profiles", { owner: next.id });
+        if (ticket !== request.current) return;
+        refreshProfiles.current = false;
+        setProfiles(loaded);
+        setRevision((value) => value + 1);
+      }
+      currentIdentity.current = next;
+      setIdentity(next);
+      setError("");
+    } catch (cause) {
+      if (ticket !== request.current) return;
+      invalidateIdentity();
+      currentIdentity.current = null;
+      setIdentity(null);
+      setProfiles([]);
+      setEditorOpen(false);
+      setError(errorMessage(cause));
+    }
+  }
+
+  async function continueAnonymously() {
+    if (resetLock.current) return;
+    resetLock.current = true;
+    request.current++;
+    setResetPending(true);
+    setResetError("");
+    try {
+      await resetSession();
+      invalidateIdentity();
+      resetLock.current = false;
+      await reload();
+    } catch (cause) {
+      setResetError(errorMessage(cause));
+    } finally {
+      resetLock.current = false;
+      setResetPending(false);
+    }
+  }
+
+  useEffect(() => {
+    void reload();
+    const check = () => { if (document.visibilityState === "visible") void reload(false); };
+    const reset = () => {
+      invalidateIdentity();
+      currentIdentity.current = null;
+      setIdentity(null);
+      setProfiles([]);
+      setEditorOpen(false);
+      void reload();
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.key === anonymousTokenKey || event.key === null) {
+        reset();
+      }
+    };
+    window.addEventListener("focus", check);
+    window.addEventListener("pageshow", check);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("storage", storage);
+    window.addEventListener(identityInvalidatedEvent, reset);
+    return () => {
+      request.current++;
+      window.removeEventListener("focus", check);
+      window.removeEventListener("pageshow", check);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("storage", storage);
+      window.removeEventListener(identityInvalidatedEvent, reset);
+      invalidateIdentity();
+    };
+  }, []);
+
+  return <div className="min-h-screen bg-[#ece7db] px-3 py-4 text-stone-950 sm:px-5 lg:px-8">
+    {identity ? <>
+      <AccountArea key={`${identity.id}:${identity.authenticated}`} identity={identity} onReload={() => reload()} onEdit={() => setEditorOpen(true)} />
+      <Feed key={`${identity.id}:${identity.authenticated}`} owner={identity.id} profiles={profiles} revision={revision} onEdit={() => setEditorOpen(true)} />
+      {editorOpen ? <SourceEditor key={identity.id} owner={identity.id} profiles={profiles} onChanged={() => reload()} onClose={() => setEditorOpen(false)} /> : null}
+    </> : <section className="mx-auto max-w-3xl py-10">
+      <h1 className="mb-5 font-serif text-4xl font-black">changelorg.</h1>
+      {error ? <>
+        <ErrorNote message={error} />
+        <p className="mt-4 text-sm leading-6">Continue anonymously to clear an expired sign-in session. This works even when GitHub sign-in is unavailable. Your anonymous identifier and data stay intact.</p>
+        <div className="my-4 flex flex-wrap items-center gap-3">
+          <button className="editor-button editor-primary" disabled={resetPending} onClick={() => void continueAnonymously()}>Continue anonymously</button>
+          <button className="editor-button" disabled={resetPending} onClick={() => void reload()}>Retry account access</button>
+          <a className="text-sm underline underline-offset-4" href="/auth/start?rd=/" aria-disabled={resetPending} onClick={(event) => { if (resetPending) event.preventDefault(); }}>Sign in with GitHub</a>
+        </div>
+        <p className="mb-4 text-xs text-stone-600">GitHub sign-in requires authentication to be enabled on this server. Session recovery does not.</p>
+        {resetPending ? <p role="status" className="mb-4 text-sm">Session reset in progress. Keep this page open.</p> : null}
+        {resetError ? <ErrorNote message={resetError} /> : null}
+      </> : <p role="status">Load your account and profiles...</p>}
+    </section>}
+  </div>;
+}
+
+function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: Profile[]; revision: number; onEdit: () => void }) {
   const [changes, setChanges] = useState<Change[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [urlState, setUrlState] = useState<UrlState>(readUrlState);
-  const [profiles, setProfiles] = useState<Profile[]>([
-    { name: "dev", source_count: 0 },
-    { name: "games", source_count: 0 },
-  ]);
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  const [userState, setUserState] = useState<UserStateByChange>(readUserState);
   const [isLoading, setIsLoading] = useState(true);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   const scrollAnchor = useRef<ScrollAnchor | null>(null);
   const scrollOnFocus = useRef(false);
   const shortcutDialog = useRef<HTMLDialogElement>(null);
+  const mutationLock = useRef(false);
+  const needsReload = useRef(false);
+  const [pending, setPending] = useState(false);
+  const loadEpoch = useRef(0);
+  const [retry, setRetry] = useState(0);
 
-  const selectedProfile = urlState.profile;
+  const selectedProfile = profiles.some((profile) => profile.name === urlState.profile) ? urlState.profile : profiles[0]?.name ?? "";
   const feedWindow = urlState.feedWindow;
   const sort = urlState.sort;
 
@@ -241,44 +328,34 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(userStateStorageKey, JSON.stringify(userState));
-    } catch {
-      setError("Could not persist browser state in localStorage.");
-    }
-  }, [userState]);
-
-  useEffect(() => {
-    fetchProfiles()
-      .then((loaded) => {
-        const byName = new Map<ProfileName, Profile>();
-        for (const profile of loaded) {
-          byName.set(profile.name, profile);
-        }
-        byName.set("dev", byName.get("dev") ?? { name: "dev", source_count: 0 });
-        byName.set("games", byName.get("games") ?? { name: "games", source_count: 0 });
-        const ordered = ["dev", "games", ...loaded.map((profile) => profile.name).filter((name) => name !== "dev" && name !== "games")];
-        setProfiles(ordered.map((name) => byName.get(name)).filter((profile): profile is Profile => Boolean(profile)));
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unknown error"));
-  }, []);
+    if (urlState.profile !== selectedProfile) updateUrlState({ profile: selectedProfile, sourceId: null, sourceName: null }, "replace");
+  }, [selectedProfile, urlState.profile]);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    loadEpoch.current++;
 
-    setIsLoading(true);
+    setIsLoading(Boolean(selectedProfile));
     setError(null);
-    fetchChanges(feedWindow, selectedProfile)
+    setChanges([]);
+    setLastAction(null);
+    setOpenNotes({});
+    setNoteDrafts({});
+    setFocusedKey(null);
+    scrollAnchor.current = null;
+    (selectedProfile ? fetchChanges(owner, feedWindow, selectedProfile, controller.signal) : Promise.resolve([]))
       .then((loaded) => {
         if (cancelled) {
           return;
         }
         setChanges(loaded);
-        setNoteDrafts(Object.fromEntries(loaded.map((change) => [changeKey(change), userState[changeKey(change)]?.note ?? ""])));
+        needsReload.current = false;
+        setNoteDrafts(Object.fromEntries(loaded.map((change) => [changeKey(change), change.note])));
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Unknown error");
+          setError(errorMessage(cause));
         }
       })
       .finally(() => {
@@ -289,8 +366,10 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      controller.abort();
+      loadEpoch.current++;
     };
-  }, [feedWindow, selectedProfile]);
+  }, [owner, feedWindow, selectedProfile, revision, retry]);
 
   useEffect(() => {
     if (!lastAction) {
@@ -300,17 +379,7 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [lastAction]);
 
-  const viewChanges: ViewChange[] = changes.map((change) => {
-    const key = changeKey(change);
-    const state = userState[key] ?? {};
-    return {
-      ...change,
-      change_key: key,
-      dismissed: Boolean(state.dismissed),
-      saved: Boolean(state.saved),
-      note: state.note ?? "",
-    };
-  });
+  const viewChanges: ViewChange[] = changes.map((change) => ({ ...change, change_key: changeKey(change) }));
 
   const inSourceFilter = (change: ViewChange) => urlState.sourceId === null || change.source_id === urlState.sourceId;
   const dismissedCount = viewChanges.filter((change) => change.dismissed).length;
@@ -328,7 +397,7 @@ export default function App() {
         name: urlState.sourceName || viewChanges.find((change) => change.source_id === urlState.sourceId)?.source_name || `Source ${urlState.sourceId}`,
       }
     : null;
-  const sourceCount = new Set(viewChanges.map((change) => change.source_id)).size;
+  const sourceCount = profiles.find((profile) => profile.name === selectedProfile)?.source_count ?? 0;
   // Shelf first, then desk: the order cards appear on screen. Drives keyboard focus and scroll anchoring.
   const visibleChanges = [...shelfChanges, ...deskChanges];
   const visibleKeys = visibleChanges.map((change) => change.change_key);
@@ -346,7 +415,7 @@ export default function App() {
     }
     const targetTop = Math.max(anchor.top, anchorTopMin);
     window.scrollBy({ top: nextElement.getBoundingClientRect().top - targetTop });
-  }, [userState]);
+  }, [changes]);
 
   // Move DOM focus to the focused card. Only keyboard navigation scrolls; a click or a removal keeps the viewport still.
   useEffect(() => {
@@ -362,99 +431,110 @@ export default function App() {
     }
   }, [focusedKey, visibleKeys.join("\n")]);
 
-  function updateLocalChangeState(change: ViewChange, patch: UserChangeState, label: string | null) {
-    setUserState((current) => {
-      const currentState = current[change.change_key] ?? {};
-      const nextState = normalizeState({ ...currentState, ...patch });
-      const next = { ...current };
-      if (nextState) {
-        next[change.change_key] = nextState;
-      } else {
-        delete next[change.change_key];
+  // Serialize desk mutations. Revisit per-item locks only if concurrent card writes become necessary.
+  async function updateChangeState(change: ViewChange, patch: UserChangeState, label: string | null, removes = false) {
+    if (mutationLock.current || needsReload.current || isLoading) return false;
+    mutationLock.current = true;
+    setPending(true);
+    setError(null);
+    const epoch = loadEpoch.current;
+    try {
+      const updated = await api<Change>(`/changes/${change.id}`, { owner, method: "PATCH", body: patch });
+      if (epoch !== loadEpoch.current) {
+        setRetry((value) => value + 1);
+        return false;
       }
-      return next;
-    });
-    if (label) {
-      setLastAction({ changeKey: change.change_key, label, previous: userState[change.change_key] });
+      if (removes) latestAnchor.current(change);
+      setChanges((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (patch.note !== undefined) setNoteDrafts((current) => ({ ...current, [change.change_key]: updated.note }));
+      setLastAction(label ? { id: change.id, changeKey: change.change_key, label, previous: { dismissed: change.dismissed, saved: change.saved, note: change.note } } : null);
+      return true;
+    } catch (cause) {
+      if (epoch === loadEpoch.current) {
+        needsReload.current = true;
+        setError(errorMessage(cause));
+      } else setRetry((value) => value + 1);
+      return false;
+    } finally {
+      mutationLock.current = false;
+      setPending(false);
     }
   }
 
   /** Record where `change` sits so the following card can take its place, and move focus to it. */
   function anchorAfterRemoval(change: ViewChange) {
     const index = visibleKeys.indexOf(change.change_key);
+    if (index < 0) return;
     const nextKey = visibleKeys[index + 1] ?? visibleKeys[index - 1] ?? null;
     scrollAnchor.current = { nextKey, top: layoutTop(cardElement(change.change_key)) };
     if (focusedKey === change.change_key) {
       setFocusedKey(nextKey);
     }
   }
+  const latestAnchor = useRef(anchorAfterRemoval);
+  latestAnchor.current = anchorAfterRemoval;
 
   function onClear(change: ViewChange) {
-    setError(null);
-    anchorAfterRemoval(change);
-    updateLocalChangeState(change, { dismissed: true }, change.saved ? "Marked read" : "Cleared from desk");
+    return updateChangeState(change, { dismissed: true }, change.saved ? "Marked read" : "Cleared from desk", true);
   }
 
-  function onToggleShelf(change: ViewChange) {
-    setError(null);
-    anchorAfterRemoval(change);
+  async function onToggleShelf(change: ViewChange) {
     const nextSaved = !change.saved;
-    updateLocalChangeState(change, nextSaved ? { saved: true } : { saved: false, note: "" }, nextSaved ? "Shelved" : "Back on the desk");
-    if (!nextSaved) {
+    const success = await updateChangeState(change, nextSaved ? { saved: true } : { saved: false, note: "" }, nextSaved ? "Shelved" : "Back on the desk", true);
+    if (success && !nextSaved) {
       setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
       setNoteDrafts((current) => ({ ...current, [change.change_key]: "" }));
     }
+    return success;
   }
 
-  function onSaveNote(change: ViewChange) {
-    setError(null);
-    if (!change.saved) {
-      anchorAfterRemoval(change);
+  async function onSaveNote(change: ViewChange) {
+    const success = await updateChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? "" }, change.saved ? null : "Shelved with note", !change.saved);
+    if (success) {
+      setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
     }
-    updateLocalChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? "" }, change.saved ? null : "Shelved with note");
-    setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
   }
 
   function onToggleNote(change: ViewChange) {
     setOpenNotes((current) => ({ ...current, [change.change_key]: !(current[change.change_key] ?? false) }));
   }
 
-  function onUndo() {
+  async function onUndo() {
     if (!lastAction) {
       return;
     }
-    const { changeKey: key, previous } = lastAction;
-    setUserState((current) => {
-      const next = { ...current };
-      if (previous) {
-        next[key] = previous;
-      } else {
-        delete next[key];
-      }
-      return next;
-    });
-    setLastAction(null);
-    scrollOnFocus.current = true;
-    setFocusedKey(key);
+    const { changeKey: key, previous, id } = lastAction;
+    const change = viewChanges.find((item) => item.id === id);
+    if (change && await updateChangeState(change, previous, null, !change.dismissed)) {
+      scrollOnFocus.current = true;
+      setFocusedKey(key);
+    }
   }
 
-  function onRestoreCleared() {
-    setUserState((current) => {
-      const next = { ...current };
-      for (const change of viewChanges) {
-        if (!change.dismissed) {
-          continue;
-        }
-        const restored = normalizeState({ ...next[change.change_key], dismissed: false });
-        if (restored) {
-          next[change.change_key] = restored;
-        } else {
-          delete next[change.change_key];
-        }
+  async function onRestoreCleared() {
+    if (mutationLock.current || needsReload.current || isLoading || !dismissedCount) return;
+    mutationLock.current = true;
+    setPending(true);
+    setError(null);
+    const epoch = loadEpoch.current;
+    try {
+      const restored = await api<Change[]>("/changes/restore", { owner, method: "POST", body: { ids: changes.filter((change) => change.dismissed).map((change) => change.id) } });
+      if (epoch !== loadEpoch.current) {
+        setRetry((value) => value + 1);
+        return;
       }
-      return next;
-    });
-    setLastAction(null);
+      const byId = new Map(restored.map((change) => [change.id, change]));
+      setChanges((current) => current.map((change) => byId.get(change.id) ?? change));
+      setLastAction(null);
+    } catch (cause) {
+      if (epoch === loadEpoch.current) {
+        needsReload.current = true;
+        setError(errorMessage(cause));
+      } else setRetry((value) => value + 1);
+    } finally {
+      mutationLock.current = false;
+      setPending(false);
+    }
   }
 
   useEffect(() => {
@@ -462,6 +542,7 @@ export default function App() {
       if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) {
         return;
       }
+      if (document.querySelector("dialog[open]") && !shortcutDialog.current?.open) return;
       if (event.key === "?") {
         event.preventDefault();
         if (!event.repeat) {
@@ -471,6 +552,11 @@ export default function App() {
         return;
       }
       if (shortcutDialog.current?.open) return;
+      if (event.key === "e") {
+        event.preventDefault();
+        if (!event.repeat) onEdit();
+        return;
+      }
       if (event.key === "Enter" && event.target instanceof HTMLElement && event.target.closest("button, a, summary")) return;
       if (event.repeat && !["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) return;
       const controlIds: Record<string, string> = { p: "profile-select", w: "window-select", t: "sort-select" };
@@ -531,6 +617,7 @@ export default function App() {
 
   const cardProps = (change: ViewChange, location: CardLocation) => ({
     change,
+    pending: pending || needsReload.current,
     location,
     focused: focusedKey === change.change_key,
     noteDraft: noteDrafts[change.change_key] ?? "",
@@ -545,13 +632,14 @@ export default function App() {
   });
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#ece7db] px-3 py-4 text-stone-950 [overflow-anchor:none] sm:px-5 lg:px-8">
+    <main className="overflow-x-hidden text-stone-950 [overflow-anchor:none]">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(120,53,15,0.16),transparent_32rem),linear-gradient(90deg,rgba(28,25,23,0.045)_1px,transparent_1px),linear-gradient(rgba(28,25,23,0.045)_1px,transparent_1px)] bg-[length:auto,44px_44px,44px_44px]" />
 
       <section className="relative mx-auto grid max-w-7xl gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
         <ControlPanel
           queueCount={deskChanges.length}
           dismissedCount={dismissedCount}
+          pending={pending || isLoading || needsReload.current}
           feedWindow={feedWindow}
           onClearSourceFilter={() => updateUrlState({ sourceId: null, sourceName: null })}
           onFeedWindowChange={(nextFeedWindow) => updateUrlState({ feedWindow: nextFeedWindow })}
@@ -569,7 +657,13 @@ export default function App() {
         />
 
         <div className="flex min-w-0 flex-col gap-5">
-          {error ? <ErrorNote message={error} /> : null}
+          {error ? <div><ErrorNote message={error} /><button className="editor-button mt-2" disabled={pending} onClick={() => setRetry((value) => value + 1)}>Reload desk from server</button></div> : null}
+          {pending ? <p role="status" className="fixed bottom-4 right-4 z-20 rounded-xl border border-stone-950 bg-[#fffaf0] px-4 py-2 text-sm font-semibold shadow-lg">Save in progress...</p> : null}
+          {!isLoading && sourceCount === 0 ? <section className="rounded-[2rem] border border-stone-950 bg-[#fffaf0] p-6">
+            <h2 className="font-serif text-3xl font-black">Build your edition</h2>
+            <p className="my-3 text-sm leading-6">{profiles.length === 0 ? "Create your first profile, then choose sources from the catalog or preview a custom URL." : "This profile has no active sources. Add or enable a source, then fetch its latest changes."}</p>
+            <button className="editor-button editor-primary" onClick={onEdit}>{profiles.length === 0 ? "Create a profile & add sources" : "Add or manage sources"}</button>
+          </section> : null}
 
           <section data-queue="shelf" className="rounded-[2rem] border border-amber-900/30 bg-[#f9d978] p-4 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)] sm:p-5">
             <QueueHeader
@@ -595,7 +689,7 @@ export default function App() {
 
           <section data-queue="desk" className="rounded-[2rem] border border-stone-950/15 bg-[#fffdf7]/90 p-4 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
             <QueueHeader count={deskChanges.length} icon={<Newspaper className="h-4 w-4" />} swipeHint="Swipe left to clear, right to shelf." title="The desk" tone="desk">
-              {deskChanges.length} readable {profileLabel(selectedProfile)} item{deskChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Desk state stays in this browser.
+              {deskChanges.length} readable {profileLabel(selectedProfile)} item{deskChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Shelf, notes, and read state stay on the server.
             </QueueHeader>
 
             {isLoading ? (
@@ -617,7 +711,7 @@ export default function App() {
         </div>
       </section>
 
-      {lastAction ? <UndoToast label={lastAction.label} onUndo={onUndo} /> : null}
+      {lastAction ? <UndoToast label={lastAction.label} pending={pending || isLoading || needsReload.current} onUndo={onUndo} /> : null}
       <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] p-6 text-stone-950 shadow-xl backdrop:bg-stone-950/50">
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 id="shortcut-title" className="font-serif text-2xl font-black">Keyboard shortcuts</h2>
@@ -651,6 +745,7 @@ function QueueHeader({ children, count, icon, swipeHint, title, tone }: { childr
 function ControlPanel({
   queueCount,
   dismissedCount,
+  pending,
   feedWindow,
   onClearSourceFilter,
   onFeedWindowChange,
@@ -666,6 +761,7 @@ function ControlPanel({
 }: {
   queueCount: number;
   dismissedCount: number;
+  pending: boolean;
   feedWindow: FeedWindow;
   onClearSourceFilter: () => void;
   onFeedWindowChange: (value: FeedWindow) => void;
@@ -684,7 +780,7 @@ function ControlPanel({
     <aside className="lg:sticky lg:top-5 lg:self-start">
       <div className="overflow-hidden rounded-[2rem] border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
         <div className="hidden border-b border-[#fff8e8]/15 p-5 sm:p-6 lg:block">
-          <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Local changelog desk</Badge>
+          <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Personal changelog desk</Badge>
         </div>
 
         <div className="grid grid-cols-4 gap-px border-b border-[#fff8e8]/15 bg-[#fff8e8]/15 text-center lg:grid-cols-2">
@@ -693,7 +789,7 @@ function ControlPanel({
           <DeskStat label="sources" value={sourceCount} />
           <DeskStat label="cleared" value={dismissedCount}>
             {dismissedCount > 0 ? (
-              <button className="mt-2 text-[0.65rem] font-black uppercase tracking-[0.18em] text-[#f8df9d] underline underline-offset-4" onClick={onRestoreCleared} type="button">
+              <button className="mt-2 text-[0.65rem] font-black uppercase tracking-[0.18em] text-[#f8df9d] underline underline-offset-4" disabled={pending} onClick={onRestoreCleared} type="button">
                 Restore
               </button>
             ) : null}
@@ -706,7 +802,8 @@ function ControlPanel({
               <Inbox className="h-4 w-4" />
               Profile
             </span>
-            <select id="profile-select" className={selectClassName} value={selectedProfile} onChange={(event) => onProfileChange(event.target.value)}>
+            <select id="profile-select" className={selectClassName} value={selectedProfile} disabled={profiles.length === 0} onChange={(event) => onProfileChange(event.target.value)}>
+              {profiles.length === 0 ? <option value="">No profiles</option> : null}
               {profiles.map((profile) => (
                 <option key={profile.name} value={profile.name}>
                   {profileLabel(profile.name)} - {profile.source_count} source{profile.source_count === 1 ? "" : "s"}
@@ -770,18 +867,18 @@ function DeskStat({ children, label, value }: { children?: ReactNode; label: str
 
 function ErrorNote({ message }: { message: string }) {
   return (
-    <div className="whitespace-pre-line rounded-2xl border border-red-900/30 bg-red-100 p-4 text-sm font-medium leading-6 text-red-950 shadow-sm">
+    <div role="alert" className="whitespace-pre-line rounded-2xl border border-red-900/30 bg-red-100 p-4 text-sm font-medium leading-6 text-red-950 shadow-sm">
       {message}
     </div>
   );
 }
 
-function UndoToast({ label, onUndo }: { label: string; onUndo: () => void }) {
+function UndoToast({ label, pending, onUndo }: { label: string; pending: boolean; onUndo: () => void }) {
   return (
     <div className="fixed inset-x-0 bottom-4 z-20 flex justify-center px-3" role="status">
       <div className="flex items-center gap-3 rounded-full border border-stone-950 bg-[#1d1a16] py-2 pl-5 pr-2 text-sm font-semibold text-[#fff8e8] shadow-[6px_6px_0_rgba(28,25,23,0.22)]">
         {label}
-        <button className="inline-flex h-9 items-center gap-1 rounded-full bg-[#f8df9d] px-4 font-black text-stone-950 transition-colors hover:bg-amber-300" onClick={onUndo} type="button">
+        <button className="inline-flex h-9 items-center gap-1 rounded-full bg-[#f8df9d] px-4 font-black text-stone-950 transition-colors hover:bg-amber-300" disabled={pending} onClick={onUndo} type="button">
           <Undo2 className="h-4 w-4" />
           Undo
         </button>
@@ -805,6 +902,7 @@ function KeyboardLegend() {
     ["f", "filter to card source"],
     ["a", "show all sources"],
     ["p / w / t", "focus profile / window / order"],
+    ["e", "edit sources and profiles"],
     ["?", "toggle shortcut help"],
   ];
   return (

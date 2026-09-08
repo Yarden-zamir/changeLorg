@@ -11,7 +11,19 @@ wheels/
 
 # Local data
 *.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.duckdb
+*.duckdb.wal
+*.migration
+*.migration.wal
 .env
+.env.*
+data/
+Caddyfile
 
 # Frontend
 node_modules/

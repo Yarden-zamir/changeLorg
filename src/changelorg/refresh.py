@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from changelorg.models import GenerationError
+from changelorg.network import SOURCE_FETCH_SLOTS
 from changelorg.service import generate_changes
 from changelorg.timeutils import parse_window
 
@@ -93,7 +94,12 @@ class HourlyRefreshLoop:
             self.status.last_started_at = datetime.now(timezone.utc)
             try:
                 window = parse_window(since=self.window)
-                result = await asyncio.to_thread(generate_changes, window, None, 500)
+
+                def fetch_all():
+                    with SOURCE_FETCH_SLOTS:
+                        return generate_changes(window, None, 500, owner_id=None)
+
+                result = await asyncio.to_thread(fetch_all)
             except Exception as exc:
                 self.status.last_change_count = 0
                 self.status.last_errors = []

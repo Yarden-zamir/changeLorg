@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 APP_NAME = "changelorg"
 
 
@@ -23,7 +22,7 @@ def database_path() -> Path:
     configured = os.environ.get("CHANGELORG_DB")
     if configured:
         return Path(configured).expanduser()
-    return data_dir() / "changelorg.db"
+    return data_dir() / "changelorg.duckdb"
 
 
 def plugin_dirs() -> list[Path]:

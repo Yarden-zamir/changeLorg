@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 export type SwipeDirection = "left" | "right";
 
@@ -51,9 +51,15 @@ function blockTouchScroll(event: TouchEvent) {
  * Tinder-style horizontal swipe on a card.
  * `onSwipe` returns true when the card leaves the list, false when it snaps back.
  */
-export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
+export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean, disabled = false) {
   const [state, setState] = useState<SwipeState>({ dx: 0, dragging: false, leaving: null });
   const gesture = useRef<Gesture | null>(null);
+  const nudgeTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    endGesture();
+    if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
+  }, []);
 
   function endGesture() {
     const current = gesture.current;
@@ -67,6 +73,11 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
   }
 
   function finish(direction: SwipeDirection) {
+    if (disabled) {
+      setState({ dx: 0, dragging: false, leaving: null });
+      return;
+    }
+    if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
     const leaves = onSwipe(direction);
     if (leaves) {
       setState({ dx: 0, dragging: false, leaving: direction });
@@ -74,16 +85,17 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
     }
     // Nudge in the swipe direction, then snap back.
     setState({ dx: direction === "left" ? -48 : 48, dragging: false, leaving: null });
-    window.setTimeout(() => setState({ dx: 0, dragging: false, leaving: null }), nudgeDurationMs);
+    nudgeTimer.current = window.setTimeout(() => setState({ dx: 0, dragging: false, leaving: null }), nudgeDurationMs);
   }
 
   /** Run a swipe action from a button. Same animation as a real swipe. */
   function trigger(direction: SwipeDirection) {
+    if (disabled || state.leaving) return;
     finish(direction);
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLElement>) {
-    if (state.leaving || !event.isPrimary || gesture.current) {
+    if (disabled || state.leaving || !event.isPrimary || gesture.current) {
       return;
     }
     const target = event.target instanceof Element ? event.target : null;
@@ -185,6 +197,7 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean) {
     leftProgress: state.leaving === "left" ? 1 : leftProgress,
     rightProgress: state.leaving === "right" ? 1 : rightProgress,
     trigger,
+    reset: () => setState({ dx: 0, dragging: false, leaving: null }),
   };
 }
 

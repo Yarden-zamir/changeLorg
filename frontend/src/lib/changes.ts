@@ -53,8 +53,19 @@ export function renderedHtml(value: string) {
   return DOMPurify.sanitize(parsed);
 }
 
+export function safeUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function openChange(change: Change) {
-  if (change.url) {
-    window.open(change.url, "_blank", "noopener,noreferrer");
+  const url = safeUrl(change.url);
+  if (url) {
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 }

@@ -1,6 +1,7 @@
 import { BookmarkCheck, BookmarkPlus, CalendarDays, Check, ChevronDown, ExternalLink, Undo2, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 
-import { formatDate, openChange, renderedHtml, type CardLocation, type ViewChange } from "../lib/changes";
+import { formatDate, openChange, renderedHtml, safeUrl, type CardLocation, type ViewChange } from "../lib/changes";
 import { leaveDurationMs, useSwipe, type SwipeDirection } from "../lib/swipe";
 import { Button } from "./ui/button";
 
@@ -10,20 +11,21 @@ type SwipeAction = {
   /** True when the card leaves its queue after the action. */
   leaves: boolean;
   tone: "danger" | "accent";
-  run: () => void;
+  run: () => void | Promise<boolean>;
 };
 
 export type ChangeCardProps = {
   change: ViewChange;
   location: CardLocation;
   focused: boolean;
+  pending: boolean;
   noteDraft: string;
   noteOpen: boolean;
   onFocus: () => void;
   /** Desk: clear from desk. Shelf: mark read, which also clears it. */
-  onClear: () => void;
+  onClear: () => Promise<boolean>;
   /** Desk: move to shelf. Shelf: put back on the desk. */
-  onToggleShelf: () => void;
+  onToggleShelf: () => Promise<boolean>;
   onSaveNote: () => void;
   onSourceFilter: () => void;
   onToggleNote: () => void;
@@ -37,10 +39,20 @@ function RenderedText({ value }: { value: string }) {
   return <div className="changelorg-rendered text-[0.95rem] leading-7 text-stone-700" dangerouslySetInnerHTML={{ __html: renderedHtml(value) }} />;
 }
 
-export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onFocus, onClear, onToggleShelf, onSaveNote, onSourceFilter, onToggleNote, onUpdateDraft }: ChangeCardProps) {
+export function ChangeCard({ change, location, focused, pending, noteDraft, noteOpen, onFocus, onClear, onToggleShelf, onSaveNote, onSourceFilter, onToggleNote, onUpdateDraft }: ChangeCardProps) {
   const preview = change.content || change.summary;
   const noteId = `note-${change.id}`;
   const onShelf = location === "shelf";
+  const url = safeUrl(change.url);
+  const leaveTimer = useRef<number | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
+    };
+  }, []);
 
   const leftAction: SwipeAction = onShelf
     ? { label: "Mark read", icon: Check, leaves: true, tone: "danger", run: onClear }
@@ -48,16 +60,25 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
   const rightAction: SwipeAction = onShelf
     ? { label: "Open source", icon: ExternalLink, leaves: false, tone: "accent", run: () => openChange(change) }
     : { label: "Shelf", icon: BookmarkPlus, leaves: true, tone: "accent", run: onToggleShelf };
+  const actions = useRef({ left: leftAction, right: rightAction });
+  actions.current = { left: leftAction, right: rightAction };
 
   const swipe = useSwipe((direction: SwipeDirection) => {
     const action = direction === "left" ? leftAction : rightAction;
     if (action.leaves) {
-      window.setTimeout(action.run, leaveDurationMs);
+      if (leaveTimer.current !== null) return true;
+      leaveTimer.current = window.setTimeout(async () => {
+        try { await actions.current[direction].run(); }
+        finally {
+          leaveTimer.current = null;
+          if (mounted.current) swipe.reset();
+        }
+      }, leaveDurationMs);
       return true;
     }
     action.run();
     return false;
-  });
+  }, pending);
 
   return (
     <article
@@ -66,6 +87,7 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
         onShelf ? "border-amber-950/40" : "border-stone-950"
       } ${focused ? "ring-2 ring-amber-500 ring-offset-2 ring-offset-[#ece7db]" : ""}`}
       data-change-key={change.change_key}
+      aria-busy={pending}
       onFocus={onFocus}
       style={swipe.style}
       tabIndex={0}
@@ -91,8 +113,8 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           </div>
 
           <h3 className="mt-4 max-w-3xl font-serif text-2xl font-black leading-[1.08] tracking-tight text-stone-950 sm:text-[2rem]">
-            {change.url ? (
-              <a className="decoration-amber-800/40 underline-offset-4 hover:underline" href={change.url} rel="noreferrer" target="_blank">
+            {url ? (
+              <a className="decoration-amber-800/40 underline-offset-4 hover:underline" href={url} rel="noopener noreferrer" target="_blank">
                 {change.title}
               </a>
             ) : (
@@ -105,7 +127,7 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           ) : null}
 
           {preview.trim() ? (
-            <div className="scrollbar-none mt-4 max-h-72 overflow-y-auto rounded-2xl border border-stone-950/10 bg-white/65 px-4 py-3">
+            <div className="scrollbar-none mt-4 max-h-72 touch-pan-y overflow-y-auto rounded-2xl border border-stone-950/10 bg-white/65 px-4 py-3">
               <RenderedText value={preview} />
             </div>
           ) : (
@@ -113,10 +135,10 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           )}
         </div>
 
-        <div className={`flex flex-col justify-end border-t border-stone-950 p-4 md:gap-4 md:border-l md:border-t-0 ${onShelf ? "bg-[#f3e2a8]" : "bg-[#eee6d6]"}`}>
+        <div className={`flex flex-col justify-end border-t border-stone-950 p-4 md:justify-start md:gap-4 md:border-l md:border-t-0 ${onShelf ? "bg-[#f3e2a8]" : "bg-[#eee6d6]"}`}>
           <Button
             className="hidden whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8] md:inline-flex"
-            disabled={swipe.leaving !== null}
+            disabled={pending || swipe.leaving !== null}
             onClick={() => swipe.trigger("left")}
             title={`${onShelf ? "Mark read" : "Clear from desk"} (x)`}
             variant="secondary"
@@ -125,10 +147,10 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
             {onShelf ? "Mark read" : "Clear from desk"}
           </Button>
           <div className="grid grid-cols-2 gap-2 md:mt-auto md:grid-cols-1">
-            {change.url ? (
+            {url ? (
               <a
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-stone-950 bg-white px-3 text-sm font-black text-stone-950 transition-colors hover:bg-amber-100"
-                href={change.url}
+                href={url}
                 rel="noreferrer"
                 target="_blank"
               >
@@ -137,7 +159,7 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
               </a>
             ) : null}
             <div className={`grid grid-cols-[1fr_auto] gap-2 ${onShelf ? "md:grid-cols-1" : ""}`}>
-              <Button className={`whitespace-nowrap rounded-xl bg-white px-3 text-stone-950 hover:bg-amber-100 ${onShelf ? "md:hidden" : ""}`} disabled={swipe.leaving !== null} onClick={onShelf ? () => swipe.trigger("left") : () => swipe.trigger("right")} variant="secondary">
+              <Button className={`whitespace-nowrap rounded-xl bg-white px-3 text-stone-950 hover:bg-amber-100 ${onShelf ? "md:hidden" : ""}`} disabled={pending || swipe.leaving !== null} onClick={onShelf ? () => swipe.trigger("left") : () => swipe.trigger("right")} variant="secondary">
                 {onShelf ? <Check className="mr-2 h-4 w-4" /> : <BookmarkPlus className="mr-2 h-4 w-4" />}
                 {onShelf ? "Mark read" : "Shelf"}
               </Button>
@@ -154,12 +176,12 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
               </Button>
             </div>
             {onShelf ? (
-              <Button className="whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8]" onClick={onToggleShelf} variant="secondary">
+              <Button className="whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8]" disabled={pending || swipe.leaving !== null} onClick={onToggleShelf} variant="secondary">
                 <Undo2 className="mr-2 h-4 w-4" />
                 Back to desk
               </Button>
             ) : (
-              <Button className="whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8] md:hidden" disabled={swipe.leaving !== null} onClick={() => swipe.trigger("left")} variant="secondary">
+              <Button className="whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8] md:hidden" disabled={pending || swipe.leaving !== null} onClick={() => swipe.trigger("left")} variant="secondary">
                 <X className="mr-2 h-4 w-4" />
                 Clear from desk
               </Button>
@@ -176,11 +198,15 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           </label>
           <textarea
             autoFocus
+            disabled={pending || swipe.leaving !== null}
+            maxLength={10000}
             className="mt-3 min-h-28 w-full rounded-2xl border border-stone-950/20 bg-white p-4 text-sm leading-6 text-stone-950 shadow-inner outline-none transition focus:border-stone-950"
             id={`${noteId}-textarea`}
             onChange={(event) => onUpdateDraft(event.target.value)}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.repeat) return;
               if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
                 onSaveNote();
               }
               if (event.key === "Escape") {
@@ -192,7 +218,7 @@ export function ChangeCard({ change, location, focused, noteDraft, noteOpen, onF
           />
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs font-medium text-stone-500">{onShelf ? "Cmd/Ctrl+Enter saves. Escape closes." : "Saving a note also moves this item to the shelf. Cmd/Ctrl+Enter saves."}</p>
-            <Button className="rounded-xl bg-stone-950 text-[#fff8e8] hover:bg-stone-800" onClick={onSaveNote}>
+            <Button className="rounded-xl bg-stone-950 text-[#fff8e8] hover:bg-stone-800" disabled={pending || swipe.leaving !== null} onClick={onSaveNote}>
               {onShelf ? "Save note" : "Shelf with note"}
             </Button>
           </div>

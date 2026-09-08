@@ -5,6 +5,31 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+DEFAULT_OWNER_ID = "github:8178413"
+
+
+def validate_owner_id(value: str) -> str:
+    namespace, separator, identifier = value.partition(":")
+    if separator and namespace == "github" and identifier.isascii() and identifier.isdecimal():
+        return value
+    if namespace == "anon" and len(identifier) == 64 and all(char in "0123456789abcdef" for char in identifier):
+        return value
+    raise ValueError("owner_id must be github:<numeric> or anon:<sha256>")
+
+
+class ProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+
+class Profile(BaseModel):
+    name: str
+    source_count: int
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -31,11 +56,14 @@ class SourceUpdate(BaseModel):
 
 
 class Source(SourceCreate):
+    owner_id: str = DEFAULT_OWNER_ID
     id: int
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    _validate_owner = field_validator("owner_id")(validate_owner_id)
 
     @field_validator("created_at", "updated_at")
     @classmethod

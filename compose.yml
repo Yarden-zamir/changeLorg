@@ -1,6 +1,8 @@
 services:
   app:
     build: .
+    # One process owns DuckDB. Revisit storage before any replica or worker increase.
+    scale: 1
     environment:
       KITSHN_RECIPE: ${KITSHN_RECIPE}
       KITSHN_ENVIRONMENT: ${KITSHN_ENVIRONMENT}
@@ -10,6 +12,11 @@ services:
       KITSHN_SOCKET_DIR: ${KITSHN_SOCKET_DIR}
       KITSHN_DEFAULT_SOCKET: ${KITSHN_DEFAULT_SOCKET}
       CHANGELORG_DATA_DIR: /data
+      CHANGELORG_DB: /data/changelorg.duckdb
+      CHANGELORG_AUTH_ENABLED: ${CHANGELORG_AUTH_ENABLED:-false}
+      CHANGELORG_OAUTH2_PROXY_URL: http://oauth2-proxy:4180
+      CHANGELORG_PUBLIC_ORIGIN: ${CHANGELORG_PUBLIC_ORIGIN:-}
+      CHANGELORG_CORS_ORIGINS: ${CHANGELORG_CORS_ORIGINS:-}
       CHANGELORG_AUTO_REFRESH: "true"
       CHANGELORG_REFRESH_INTERVAL_SECONDS: "3600"
       CHANGELORG_REFRESH_WINDOW: "30d"
@@ -23,6 +30,56 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  oauth2-proxy:
+    profiles: [github-auth]
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
+    command:
+      - --http-address=0.0.0.0:4180
+      - --provider=github
+      - --proxy-prefix=/auth
+      - --redirect-url=${CHANGELORG_PUBLIC_ORIGIN:-https://changelorg.yarden-zamir.com}/auth/callback
+      - --reverse-proxy=true
+      - --email-domain=*
+      - --set-xauthrequest=true
+      - --pass-access-token=true
+      - --skip-provider-button=true
+      - --cookie-name=_changelorg_oauth
+      - --cookie-secure=true
+      - --cookie-httponly=true
+      - --cookie-samesite=lax
+      - --cookie-path=/
+      - --cookie-refresh=0
+      - --upstream=static://202
+    environment:
+      # Compose interpolates disabled profiles too. oauth2-proxy rejects empty credentials at startup.
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:-}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:-}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:-}
+      KITSHN_RECIPE: ${KITSHN_RECIPE}
+      KITSHN_ENVIRONMENT: ${KITSHN_ENVIRONMENT}
+      KITSHN_DEPLOYMENT: ${KITSHN_DEPLOYMENT}
+    expose:
+      - "4180"
+    # The distroless image has no probe tools. The auth socket proxy checks its HTTP endpoint instead.
+    restart: unless-stopped
+
+  auth-socket-proxy:
+    profiles: [github-auth]
+    image: alpine/socat:latest
+    pull_policy: always
+    command: ["UNIX-LISTEN:${KITSHN_SOCKET_DIR}/auth.sock,fork,unlink-early,mode=666", "TCP:oauth2-proxy:4180"]
+    volumes:
+      - ${KITSHN_SOCKET_DIR}:${KITSHN_SOCKET_DIR}
+    depends_on:
+      oauth2-proxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "test -S '${KITSHN_SOCKET_DIR}/auth.sock' && wget -q -O /dev/null http://oauth2-proxy:4180/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   socket-proxy:
     image: alpine/socat:latest

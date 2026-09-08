@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from changelorg.models import SourceCreate
-from changelorg.store import add_source, list_sources
+from pathlib import Path
 
+from changelorg.models import SourceCreate
+from changelorg.store import seed_sources_once
 
 THE_FINALS_SOURCE = SourceCreate(
     name="THE FINALS Patch Notes",
@@ -68,19 +69,5 @@ DEFAULT_SOURCES: list[SourceCreate] = [
 ]
 
 
-def _source_url(source: SourceCreate) -> str | None:
-    url = source.config.get("url")
-    return url if isinstance(url, str) else None
-
-
-def seed_default_sources() -> int:
-    existing_urls = {url for source in list_sources() if (url := _source_url(source)) is not None}
-    added = 0
-    for source in DEFAULT_SOURCES:
-        url = _source_url(source)
-        if url is None or url in existing_urls:
-            continue
-        add_source(source)
-        existing_urls.add(url)
-        added += 1
-    return added
+def seed_default_sources(db_path: Path | None = None) -> int:
+    return seed_sources_once(DEFAULT_SOURCES, db_path)
