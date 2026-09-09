@@ -83,7 +83,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
   return (
     <article
       {...swipe.handlers}
-      className={`group relative overflow-hidden rounded-[1.75rem] border bg-[#fffaf0] shadow-[5px_5px_0_rgba(28,25,23,0.14)] outline-none ${
+      className={`change-card group relative overflow-hidden rounded-[1.75rem] border bg-[#fffaf0] shadow-[5px_5px_0_rgba(28,25,23,0.14)] outline-none ${
         onShelf ? "border-amber-950/40" : "border-stone-950"
       } ${focused ? "ring-2 ring-amber-500 ring-offset-2 ring-offset-[#ece7db]" : ""}`}
       data-change-key={change.change_key}
@@ -99,7 +99,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
         <div className="min-w-0 p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-stone-500">
             <button
-              className="inline-flex items-center rounded-full border border-stone-950 bg-stone-950 px-2.5 py-1 text-[#fff8e8] transition-colors hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-[#fffaf0]"
+              className="inline-flex min-w-0 max-w-full items-center rounded-xl border border-stone-950 bg-stone-950 px-2.5 py-1 text-[#fff8e8] transition-colors hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-[#fffaf0]"
               onClick={onSourceFilter}
               title={`Filter to ${change.source_name}`}
               type="button"
@@ -147,7 +147,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
             {onShelf ? <Check className="mr-2 h-4 w-4" /> : <X className="mr-2 h-4 w-4" />}
             {onShelf ? "Mark read" : "Clear from desk"}
           </Button>
-          <div className="grid grid-cols-2 gap-2 md:mt-auto md:grid-cols-1">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:mt-auto md:grid-cols-1">
             {url ? (
               <a
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-stone-950 bg-white px-3 text-sm font-black text-stone-950 transition-colors hover:bg-amber-100"

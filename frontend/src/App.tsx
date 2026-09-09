@@ -742,7 +742,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
       </section>
 
       {lastAction ? <UndoToast label={lastAction.label} pending={pending || isLoading || needsReload.current} onUndo={onUndo} /> : null}
-      <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] p-6 text-stone-950 shadow-xl backdrop:bg-stone-950/50">
+      <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] p-4 text-stone-950 shadow-xl backdrop:bg-stone-950/50 sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 id="shortcut-title" className="font-serif text-2xl font-black">Keyboard shortcuts</h2>
           <button autoFocus className="rounded-xl border border-stone-950 px-3 py-2 text-sm font-bold" onClick={() => shortcutDialog.current?.close()} type="button">Close</button>
@@ -767,7 +767,7 @@ function QueueHeader({ children, count, icon, swipeHint, title, tone }: { childr
         </div>
         <p className={`mt-2 hidden text-xs font-semibold pointer-coarse:block ${body}`}>{swipeHint}</p>
       </div>
-      <p className={`max-w-md text-sm leading-6 ${body}`}>{children}</p>
+      <p className={`min-w-0 max-w-md text-sm leading-6 [overflow-wrap:anywhere] ${body}`}>{children}</p>
     </div>
   );
 }
@@ -805,7 +805,7 @@ function ControlPanel({
   sort: SortKey;
   sourceCount: number;
 }) {
-  const selectClassName = "h-11 w-full rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-3 text-sm font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d]";
+  const selectClassName = "h-11 w-full min-w-0 rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-2 text-base font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d] sm:px-3 sm:text-sm";
   return (
     <aside className="lg:sticky lg:top-5 lg:self-start">
       <div className="overflow-hidden rounded-[2rem] border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
@@ -819,7 +819,7 @@ function ControlPanel({
           <DeskStat label="sources" value={sourceCount} />
           <DeskStat label="cleared" value={dismissedCount}>
             {dismissedCount > 0 ? (
-              <button className="mt-2 text-[0.65rem] font-black uppercase tracking-[0.18em] text-[#f8df9d] underline underline-offset-4" disabled={pending} onClick={onRestoreCleared} type="button">
+              <button className="mt-1 inline-flex min-h-11 items-center text-sm font-bold text-[#f8df9d] underline underline-offset-4" disabled={pending} onClick={onRestoreCleared} type="button">
                 Restore
               </button>
             ) : null}
@@ -827,8 +827,8 @@ function ControlPanel({
         </div>
 
         <div className="grid grid-cols-3 gap-3 p-4 sm:gap-4 sm:p-6 lg:grid-cols-1">
-          <label className="block">
-            <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
+          <label className="block min-w-0">
+            <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
               <Inbox className="h-4 w-4" />
               Profile
             </span>
@@ -842,8 +842,8 @@ function ControlPanel({
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
+          <label className="block min-w-0">
+            <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
               <CalendarDays className="h-4 w-4" />
               Window
             </span>
@@ -856,8 +856,8 @@ function ControlPanel({
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-[#b8af9d]">
+          <label className="block min-w-0">
+            <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
               <LibraryBig className="h-4 w-4" />
               Order
             </span>
@@ -870,11 +870,16 @@ function ControlPanel({
             </select>
           </label>
 
+          <p className="col-span-3 min-w-0 text-sm leading-6 [overflow-wrap:anywhere] lg:hidden" aria-label="Current feed selection">
+            <span className="block font-semibold">{selectedProfile ? `Profile: ${profileLabel(selectedProfile)}` : "No profiles yet"}</span>
+            {windowLabel(feedWindow)} / {sortOptions.find((option) => option.value === sort)?.label}
+          </p>
+
           {sourceFilter ? (
             <div className="col-span-3 rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3 lg:col-span-1">
-              <div className="text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#b8af9d]">Source filter</div>
-              <div className="mt-1 truncate text-sm font-black text-[#fff8e8]">{sourceFilter.name}</div>
-              <button className="mt-2 text-xs font-black text-[#f8df9d] underline underline-offset-4" onClick={onClearSourceFilter} type="button">
+              <div className="text-xs font-bold uppercase tracking-[0.12em] text-[#b8af9d]">Source filter</div>
+              <div className="mt-1 text-sm font-black text-[#fff8e8] [overflow-wrap:anywhere]">{sourceFilter.name}</div>
+              <button className="mt-1 inline-flex min-h-11 items-center text-sm font-black text-[#f8df9d] underline underline-offset-4" onClick={onClearSourceFilter} type="button">
                 Show all sources
               </button>
             </div>
@@ -887,9 +892,9 @@ function ControlPanel({
 
 function DeskStat({ children, label, value }: { children?: ReactNode; label: string; value: number }) {
   return (
-    <div className="bg-[#1d1a16] px-3 py-4">
+    <div className="min-w-0 bg-[#1d1a16] px-1 py-4 sm:px-3">
       <div className="font-serif text-3xl font-black leading-none text-[#f8df9d]">{value}</div>
-      <div className="mt-1 text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#b8af9d]">{label}</div>
+      <div className="mt-1 text-xs font-bold uppercase tracking-[0.04em] text-[#b8af9d] sm:text-[0.65rem] sm:tracking-[0.22em]">{label}</div>
       {children}
     </div>
   );
@@ -938,8 +943,8 @@ function KeyboardLegend() {
   return (
     <div className="grid gap-3 text-sm font-semibold text-stone-600">
       {keys.map(([key, label]) => (
-        <span className="inline-flex items-center gap-2" key={key}>
-          <kbd className="rounded-md border border-stone-950/20 bg-white px-1.5 py-0.5 font-mono text-[0.7rem] text-stone-800">{key}</kbd>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1" key={key}>
+          <kbd className="shrink-0 whitespace-nowrap rounded-md border border-stone-950/20 bg-white px-1.5 py-0.5 font-mono text-xs text-stone-800">{key}</kbd>
           {label}
         </span>
       ))}

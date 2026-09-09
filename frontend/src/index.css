@@ -122,8 +122,23 @@ body:has(dialog[open]) { overflow: hidden; }
 }
 .editor-actions .editor-button { flex-shrink: 0; }
 .source-editor { scroll-padding-block: 1rem 12rem; }
+.change-card, .account-area, .editor-preview, .editor-notice, .editor-actions { overflow-wrap: anywhere; }
 @media (max-width: 639px) {
-  .editor-actions .editor-button { flex: 1 1 auto; padding: 0.55rem; }
+  .source-editor { scroll-padding-bottom: 42dvh; }
+  .source-editor label.flex-1 { flex-basis: 100%; }
+  .editor-source span { font-size: 0.875rem; line-height: 1.5; }
+  .editor-list-title { font-size: 0.75rem; }
+  .editor-actions { max-height: 40dvh; overflow-y: auto; }
+  .editor-actions > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .editor-actions .editor-button { min-width: 0; min-height: 2.75rem; padding: 0.55rem; }
+  .editor-actions p, .account-area .text-xs { font-size: 0.875rem; line-height: 1.5; }
+  .editor-confirmation .editor-button { width: 100%; min-height: 2.75rem; }
+  .account-area > div > div { min-width: 0; max-width: 100%; }
+  .change-card textarea { font-size: 1rem; }
+  .change-card .text-xs { font-size: 0.875rem; letter-spacing: 0.05em; }
+  .change-card .text-stone-500 { color: #57534e; }
+  .change-card button, .change-card .h-10 { min-height: 2.75rem; }
+  .change-card svg { flex-shrink: 0; }
   .editor-preview-items { max-height: 24rem; }
 }
 .changelorg-rendered { overflow-wrap: anywhere; }

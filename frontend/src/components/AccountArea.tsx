@@ -60,7 +60,7 @@ export function AccountArea({ identity, onReload, onEdit }: { identity: Identity
     <header className="account-area relative mx-auto mb-5 max-w-7xl border-y-2 border-stone-950 py-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-[0.65rem] font-black uppercase tracking-[0.3em]">Your personal change newspaper</p>
+          <p className="text-[0.75rem] font-black uppercase tracking-[0.18em] sm:text-[0.65rem] sm:tracking-[0.3em]">Your personal change newspaper</p>
           <h1 className="font-serif text-4xl font-black tracking-tight">changelorg<span className="text-amber-800">.</span></h1>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
