@@ -74,6 +74,26 @@ def wire(monkeypatch: pytest.MonkeyPatch) -> Wire:
             "https://www.github.com/Other/Repo/tags.atom",
             "https://www.github.com/Other/Repo/tags.atom",
         ),
+        (
+            "github.com/Other/Repo/commits/",
+            "https://github.com/Other/Repo/commits.atom",
+        ),
+        (
+            "github.com/Other/Repo/commits.atom",
+            "https://github.com/Other/Repo/commits.atom",
+        ),
+        (
+            "https://github.com/Other/Repo/commits/main.atom?x=1",
+            "https://github.com/Other/Repo/commits/main.atom?x=1",
+        ),
+        (
+            "https://github.com/Other/Repo/commits/release/9.0.atom",
+            "https://github.com/Other/Repo/commits/release/9.0.atom",
+        ),
+        (
+            "https://github.com/Other/Repo/commits/release%2F9.0.atom",
+            "https://github.com/Other/Repo/commits/release%2F9.0.atom",
+        ),
     ],
 )
 def test_normalize_without_network(wire: Wire, value: str, expected: str) -> None:
@@ -152,6 +172,16 @@ def test_invalid_initial_input_is_value_error_without_credentials_or_dns(
         "Other/Repo/releases/new",
         "Other/Repo/tags/extra",
         "Other/Repo/releases.atom/extra",
+        "Other/Repo/commits/main",
+        "Other/Repo/commits/main.atom/extra",
+        "Other/Repo/commits/.atom",
+        "Other/Repo/commits/.hidden.atom",
+        "Other/Repo/commits/main.lock.atom",
+        "Other/Repo/commits/release//main.atom",
+        "Other/Repo/commits/a..b.atom",
+        "Other/Repo/commits/a%3Fb.atom",
+        "Other/Repo/commits/a%0Ab.atom",
+        "Other/Repo/commits/@.atom",
     ],
 )
 def test_unsupported_github_paths_do_not_map_to_releases(wire: Wire, path: str) -> None:
@@ -181,7 +211,14 @@ def test_only_exact_github_hosts_map(wire: Wire, host: str) -> None:
 
 @pytest.mark.parametrize("suffix", ["", "/releases", "/releases/latest", "/tags"])
 def test_github_fetches_only_canonical_feed(wire: Wire, suffix: str) -> None:
-    wire.responses.append(response(EMPTY_ATOM))
+    wire.responses.append(
+        response(
+            EMPTY_ATOM.replace(
+                b"</feed>",
+                b"<entry><id>release-1</id><title>Release</title></entry></feed>",
+            )
+        )
+    )
     sources = discover_sources("https://github.com/Any-owner/Any.repo" + suffix)
     endpoint = "tags.atom" if suffix == "/tags" else "releases.atom"
     assert sources[0].config == {
@@ -191,6 +228,53 @@ def test_github_fetches_only_canonical_feed(wire: Wire, suffix: str) -> None:
     assert (
         f"GET /Any-owner/Any.repo/{endpoint} HTTP/1.1".encode() in wire.sockets[0].sent
     )
+
+
+def test_fallback_draft_keeps_release_url_and_stable_repository_name(
+    wire: Wire,
+) -> None:
+    url = "https://github.com/Other/Repo/releases.atom"
+    wire.responses.extend(
+        [
+            response(EMPTY_ATOM),
+            response(
+                status=302, headers=b"Location: /Other/Repo/commits/main.atom\r\n"
+            ),
+            response(EMPTY_ATOM.replace(b"Empty Atom", b"Recent commits to Repo:main")),
+        ]
+    )
+    fallback = discover_sources("Other/Repo")
+    assert fallback[0].config == {"url": url}
+    assert "Repo" in fallback[0].name
+    assert "commit" not in fallback[0].name.lower()
+    wire.responses.append(
+        response(
+            EMPTY_ATOM.replace(
+                b"</feed>",
+                b"<entry><id>release-1</id><title>Release</title></entry></feed>",
+            )
+        )
+    )
+    assert discover_sources("Other/Repo") == fallback
+    assert not wire.responses
+
+
+@pytest.mark.parametrize("branch", ["release/9.0", "release%2F9.0"])
+def test_direct_commit_feed_preserves_encoded_request_path(
+    wire: Wire, branch: str
+) -> None:
+    url = f"https://github.com/Other/Repo/commits/{branch}.atom"
+    wire.responses.append(
+        response(EMPTY_ATOM.replace(b"Empty Atom", b"Recent commits to Repo"))
+    )
+    sources = discover_sources(url)
+    assert sources[0].config["url"] == url
+    assert sources[0].name == "Recent commits to Repo"
+    assert (
+        f"GET /Other/Repo/commits/{branch}.atom HTTP/1.1".encode()
+        in wire.sockets[0].sent
+    )
+    assert len(wire.sockets) == 1
 
 
 @pytest.mark.parametrize(

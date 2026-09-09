@@ -110,6 +110,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
               <CalendarDays className="h-3.5 w-3.5" />
               {formatDate(change.published_at)}
             </span>
+            {change.metadata?.fallback_reason === "no_releases" && change.metadata.feed_kind === "commit" ? <span className="rounded-full border border-stone-950/20 px-2 py-1" title="This repository has no releases. This card represents one commit.">Commit</span> : null}
           </div>
 
           <h3 className="mt-4 max-w-3xl font-serif text-2xl font-black leading-[1.08] tracking-tight text-stone-950 sm:text-[2rem]">

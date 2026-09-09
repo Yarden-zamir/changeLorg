@@ -36,7 +36,7 @@ This migration is irreversible without an external copy. A SQLite-only release c
 
 - Each source has one `owner_id`. Changes and their state inherit ownership from their source.
 - Profiles use the key `(owner_id, name)`. Empty profiles remain explicit records.
-- Each source belongs to one profile through `config.profile`, not a separate membership list.
+- Each saved source belongs to one profile through the known string field `config.profile`, not a separate membership list.
 - Source creation and updates require an existing profile for the current owner. Discovery and preview require no profile.
 - Profile lists include empty profiles. `source_count` counts enabled sources only.
 - The same public URL under different owners represents separate private subscriptions and changes.
@@ -47,6 +47,53 @@ This migration is irreversible without an external copy. A SQLite-only release c
 - Disable preserves cached data and state but excludes the source from API feeds and all refresh paths.
 - Public requests pass the resolved owner explicitly. They never use a default owner or the store's `owner_id=None` scope.
 - Only internal scheduled refreshes use the all-owner scope. Public responses never expose cross-owner refresh details.
+
+## Repository Feed Data
+
+- Exact public GitHub release feeds use default-branch commits only after a valid, globally empty Atom response, before window or local filters.
+- Old releases outside the window do not trigger fallback. Query-filtered feeds, tags, malformed/error responses, private/nonexistent repositories, and lookalike hosts do not qualify.
+- [GitHub Release Fallback](../frontend/API.md#github-release-fallback) defines URL checks, visible failures, and shared network budgets for discovery, preview, and refresh.
+- Discovery names release candidates `{owner}/{repo} updates` and retains the normalized release URL. Saved `config.url` never becomes the fallback commit URL.
+- Every fetch checks releases again. The first release switches subsequent fetches to releases without a source edit or new subscription.
+- Each eligible commit uses its unique Atom ID as `external_id`. Normal `(source_id, external_id)` deduplication and owner isolation apply.
+- Commit metadata adds `feed_kind: "commit"`, `fallback_reason: "no_releases"`, and `effective_feed_url`. Existing `feed_url` retains the configured release URL.
+- The switch never deletes cached commit cards or changes their IDs, dismissed flags, shelf flags, notes, or state timestamps.
+- Time windows control cached card visibility, not retention. Fallback introduces no separate data store, migration, or API mutation.
+
+## Editor Save Boundaries
+
+- Discovery and preview write no profiles, sources, changes, or state. Explicit profile creation persists a profile independently of source save.
+- Preview validity follows the normalized plugin/config signature except `profile`, as defined in [Preview Validity](../frontend/API.md#preview-validity).
+- Name, profile, and enabled-state edits retain preview. Inline profile creation with selection and profile rename also retain preview.
+- Profile rename updates source membership transactionally. The editor mirrors that change without a source write or a clean-to-dirty transition.
+- Source-write API calls persist the subscription without a fetch. `Save only` keeps that boundary, including for disabled source creation.
+- Explicit `Save and fetch` first writes the source, then refreshes only the enabled source from the successful save response.
+- Fetch or synchronization failure does not roll back a successful source write or discard its returned ID.
+- Fetch retry targets that saved ID without another source write. Synchronization retry performs data reads, without writes or refreshes.
+- Unknown config fields remain intact for the same plugin. The editor introduces no storage migration, backend API, or identity change.
+- `View source` selects the saved source's profile and source URL parameters only for the current owner. It preserves the window and sort.
+- `Add another` starts a separate source entry without an implicit profile selection. It does not change saved subscriptions or profiles.
+- A new candidate needs Save but requires no discard warning until manual normalized edits differ from its selected baseline.
+- Untouched preview/candidates, reverted metadata or fetch edits, and equivalent normalized URL/filter whitespace require no warning. Successful save resets that baseline before fetch or synchronization.
+- Failed fetch or synchronization after successful save creates no unsaved-draft warning. It never rolls back persisted source data.
+- Custom in-app discard protects actual source edits. Unsubmitted profile creation or rename text warns only on editor exit, not source replacement.
+- Created profiles remain durable after draft discard or editor close. Discard never reverses profile creation.
+- `Duplicate draft` preserves current draft edits and preview without a discard prompt. Explicit Save creates another subscription and leaves the original unchanged.
+- Discard, source disable, source delete, and profile delete use editor-owned custom modal confirmations, not browser `confirm()`.
+- Cancel receives default focus; discard labels it `Keep editing`. Focus stays in the top dialog; Escape cancels only that dialog.
+- Confirm runs its captured action exactly once for the same owner. Owner change or editor unmount invalidates the action.
+- `beforeunload` protects only actual source edits, unsubmitted profile text, or a pending mutation. Browsers own unavoidable tab-close and navigation-away prompts.
+- Newer profile synchronization supersedes older profile loads. Late successes and errors cannot replace profiles, close the editor, or discard its draft.
+- Genuine current identity failures still block access and clear old account data under Request Safety. Stale-profile checks never override identity validation.
+
+## Loaded Feed State
+
+- An active URL `source` filter becomes API `source_id`. The server applies profile, window, and source filters before the 200-item limit.
+- Source-filter changes request new data rather than filter an already limited profile response in the browser.
+- Restore changes only loaded dismissed entries in that scope. With a source filter, it excludes every other source.
+- Without a source filter, Restore covers loaded dismissed entries across the profile and window, up to 200 items, not all stored entries.
+- Restore preserves notes and shelf flags. [Mutation Rules 6](../frontend/API.md#mutation-rules) defines its scope without a mutation payload change.
+- URL state updater callbacks contain no history side effects. Each navigation action writes history once; one Back action restores the prior selection.
 
 ## Anonymous Access
 

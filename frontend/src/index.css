@@ -68,6 +68,25 @@ button:focus-visible, a:focus-visible { outline: 2px solid #b45309; outline-offs
 }
 
 .source-editor::backdrop { background: rgb(28 25 23 / 65%); }
+.editor-confirmation {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: calc(100% - 2rem);
+  max-width: 28rem;
+  max-height: 85dvh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  border: 2px solid #1d1a16;
+  border-radius: 1.25rem;
+  background: #fffaf0;
+  color: #1d1a16;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  box-shadow: 6px 6px 0 rgb(28 25 23 / 22%);
+}
+.editor-confirmation::backdrop { background: rgb(28 25 23 / 55%); }
+.editor-danger { background: #7f1d1d; color: #fffaf0; }
+.editor-danger:hover:not(:disabled) { background: #991b1b; }
 body:has(dialog[open]) { overflow: hidden; }
 .source-editor label { display: block; font-size: 0.8rem; font-weight: 700; }
 .source-editor input:not([type="checkbox"]), .source-editor select, .source-editor textarea {
@@ -90,6 +109,23 @@ body:has(dialog[open]) { overflow: hidden; }
 .editor-source:hover, .editor-source[aria-pressed="true"] { background: #f9e8b6; }
 .editor-source strong { display: block; font-family: ui-serif, Georgia, serif; }
 .editor-source span { display: block; margin-top: 0.2rem; font-size: 0.7rem; color: #57534e; }
+.editor-preview-items { max-height: 32rem; overflow-y: auto; }
+.editor-actions {
+  position: sticky;
+  bottom: -1px;
+  z-index: 1;
+  margin-top: 1.25rem;
+  border-top: 2px solid #1d1a16;
+  background: #fffaf0;
+  padding: 0.75rem 0;
+  box-shadow: 0 -8px 16px rgb(255 250 240 / 95%);
+}
+.editor-actions .editor-button { flex-shrink: 0; }
+.source-editor { scroll-padding-block: 1rem 12rem; }
+@media (max-width: 639px) {
+  .editor-actions .editor-button { flex: 1 1 auto; padding: 0.55rem; }
+  .editor-preview-items { max-height: 24rem; }
+}
 .changelorg-rendered { overflow-wrap: anywhere; }
 .changelorg-rendered img { max-width: 100%; height: auto; }
 

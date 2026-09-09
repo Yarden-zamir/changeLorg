@@ -26,7 +26,7 @@ Stored sources also include `id`, `owner_id`, `created_at`, and `updated_at`. Th
 
 Common config fields:
 
-- `profile`: The source belongs to exactly one profile through `config.profile`.
+- `profile`: The source belongs to exactly one profile through the known string field `config.profile` on saved sources.
 - Web source saves require an explicit profile that exists for the current owner. Discovery and preview require no profile.
 - The CLI defaults to `dev` when the profile is omitted.
 
@@ -154,6 +154,24 @@ Behavior:
 - Filters entries to the requested time window.
 - Applies `include_any` before `exclude_any` against title, URL, summary, and content.
 
+### GitHub Release Fallback
+
+- Only exact `/owner/repo/releases.atom` URLs on `github.com` or `www.github.com` qualify, both before and after redirects.
+- Fallback requires valid Atom 1.0 with zero entries globally, before window or local term filters, and no query string on either URL.
+- A qualifying empty release feed fetches `https://github.com/{owner}/{repo}/commits.atom` for the final repository's default branch.
+- Any release entry prevents fallback, including old releases outside the requested window or releases excluded by local filters.
+- Query-filtered feeds, tags, direct commit feeds, lookalike hosts, and non-exact release paths never trigger fallback.
+- Malformed or non-Atom release responses, HTTP/network failures, and private or nonexistent repositories never count as no releases.
+- Both requests use one `PublicFetcher` and the public network budgets below. The commit response also requires valid Atom 1.0.
+- HTTP failures at either endpoint remain visible as safe discovery/preview failures or refresh source errors, never successful empty results.
+- Discovery retains the normalized original release URL and names the candidate `{owner}/{repo} updates`. Save retains that release URL in `config.url`.
+- Every preview and refresh reevaluates releases. Once the first release appears, subsequent fetches use releases without a source edit.
+- The switch retains cached commit cards, IDs, dismissed flags, shelf flags, notes, and state timestamps. Normal windows still control visibility.
+- Each eligible commit becomes one normal change/card with its unique Atom ID as `external_id`, commit link, timestamp, and text.
+- Normal window and include/exclude filters apply to commits. Empty valid commit results produce no cards.
+- Fallback metadata adds `feed_kind: "commit"`, `fallback_reason: "no_releases"`, and `effective_feed_url` for the final commit response URL.
+- Existing `metadata.feed_url` retains the configured release URL. Direct commit feeds do not receive no-release fallback markers.
+
 ### Built-In HTML News Plugin
 
 Key: `html-news`
@@ -169,9 +187,10 @@ Key: `html-news`
 - Input accepts absolute HTTP or HTTPS URLs, bare domains with optional paths, and GitHub `owner/repo` shorthand. Bare inputs use HTTPS.
 - GitHub repository roots, optional `.git` suffixes, `/releases`, `/releases/latest`, and `/releases/tag/...` map to `/releases.atom`.
 - The releases feed covers all repository releases, not only the supplied tag or latest release.
-- GitHub `/tags` maps to `/tags.atom`. Direct `/releases.atom` and `/tags.atom` URLs retain their stream and query string.
-- Other GitHub paths, such as `/issues`, are rejected rather than mapped to a releases feed.
-- Discovery fetches one normalized target under the public network limits below. It recognizes RSS/Atom from the response body, including valid empty feeds.
+- GitHub `/tags` maps to `/tags.atom`; `/commits` maps to default-branch `/commits.atom`. Direct release, tag, and commit Atom URLs retain their stream and query string.
+- Direct `/commits/{branch}.atom` accepts valid normalized branch names, including slash-separated and percent-encoded branches, without loss of URL encoding.
+- Other GitHub paths, such as `/issues` and branch HTML `/commits/main`, are rejected rather than mapped to a releases feed.
+- Discovery reads the normalized target and, only for qualifying empty releases, its commit fallback. It recognizes RSS/Atom from the body, including valid empty feeds.
 - HTML discovery accepts `<link rel="alternate">` with RSS/Atom media types. Relative URLs use the final response URL and the first valid `<base href>`.
 - Discovery rejects structurally unsafe candidate URLs and returns at most 10 distinct URLs. It does not resolve candidate DNS or fetch alternate candidates.
 - Preview verifies a selected candidate through the normal public fetch checks. An advertised alternate is not proof of a valid feed.
@@ -183,15 +202,20 @@ Key: `html-news`
 
 - `POST /sources/preview` accepts a built-in source draft and previews the last 30 days.
 - Preview returns at most 10 changes and the window. It never writes profiles, sources, changes, or state.
-- Any draft change requires another preview before save, including source name and profile changes. An empty preview permits save.
-- Source save never fetches changes. Explicit refresh fetches the saved source.
+- The editor requires a successful preview of the current normalized fetch signature before save. An empty preview permits save.
+- The signature contains the plugin and normalized config except `profile`, with canonical object-key order.
+- URL, include/exclude terms, enrichment, article options, limits, user agent, and other retained config affect the signature.
+- A changed signature invalidates preview. Whitespace edits that produce the same normalized fetch inputs do not invalidate preview.
+- Source name, profile, and enabled state are metadata outside the fetch signature. Metadata-only edits retain preview.
+- Source-write API calls never fetch changes. `Save only` preserves this behavior.
+- Explicit `Save and fetch` writes the source, then refreshes only the enabled source from the successful save response.
 - Source URLs require absolute HTTP or HTTPS URLs, ports 80 or 443, and no URL credentials.
 - Every source request validates all DNS answers and rejects private, loopback, link-local, reserved, and other non-public addresses.
 - Connections pin validated numeric addresses. They do not repeat DNS resolution before connection.
 - Redirects and article or enrichment links receive the same validation to prevent server-side request forgery.
 - Each request follows at most 3 redirects. Each response body has a 2 MiB limit.
 - Each source invocation allows at most 12 requests, a 60-second total deadline, and at most 200 candidate entries.
-- Redirects, article requests, and enrichment requests share the invocation budget.
+- Redirects, release checks, commit fallback requests, article requests, and enrichment requests share the invocation budget.
 - Compressed responses are rejected. Revisit bounded decompression if a required source needs compression.
 - Discovery uses the same invocation budget and global semaphore as other source network operations.
 - A global limit permits at most four concurrent source network operations across discovery, previews, manual refreshes, and scheduled refreshes.
@@ -290,6 +314,7 @@ Behavior:
 - `GET /changes` hides dismissed changes unless `include_dismissed=true` is provided.
 - `GET /changes?saved=true` returns saved changes only.
 - `GET /changes?profile=dev` filters to the owner's enabled sources in the `dev` profile. Other profile names work identically.
+- `GET /changes?source_id={id}` filters within the owner's selected profile and window before the result limit, not after it.
 - `PATCH /changes/{change_id}` updates only supplied `dismissed`, `saved`, and `note` fields. The note limit is 10,000 characters.
 - Restore changes only `dismissed` to `false` for supplied IDs. It preserves notes and shelf flags.
 - Batch mutations validate every ID's ownership before any state change.
@@ -304,15 +329,44 @@ Behavior:
 - Loads cached changes from the backend.
 - Lists the owner's profiles, including empty profiles, and permits profile creation, rename, and deletion.
 - Reads durable backend data. The server refreshes enabled sources hourly with a default 30-day fetch window.
-- Supports source search, discovery, preview, creation, edit, enable, disable, deletion, and explicit refresh.
+- Supports source search, discovery, preview, creation, edit, enable, disable, draft duplication, confirmed deletion, and explicit refresh.
 - One source search input matches names against saved sources and optional catalog suggestions. It does not search the full web.
 - URLs, bare domains, and GitHub `owner/repo` offer an explicit Discover action. Keystrokes never trigger discovery or external source fetches.
 - Name queries can request catalog suggestions after a debounce. Catalog failure does not block link discovery; no preset is required.
 - A single discovery result automatically selects the RSS/Atom handler and starts preview. Multiple results require a choice that automatically starts preview.
 - Discovery and preview work without a profile. Profile creation, profile selection, and source save remain explicit actions.
-- Any draft change invalidates preview, including source name, profile selection, or a newly created profile assigned to the draft.
-- Manual handler, URL, and enrichment controls stay under Advanced, collapsed for RSS/Atom drafts.
+- Only a normalized fetch-signature change invalidates preview. Name, profile selection, inline profile creation, profile rename, and enabled-state changes retain preview.
+- Profile rename updates the selected source and draft membership without a source write. A clean draft stays clean.
+- Normalization trims URLs and HTML article prefixes, trims and removes empty RSS/Atom terms, and converts HTML limits to numbers.
+- Canonical signatures ignore object-key order. Unknown config fields remain intact for the same plugin and participate in the signature.
+- Plugin switches remove incompatible config fields. [Frontend API Contract](../frontend/API.md#preview-validity) defines normalization details.
+- Preview stays near the name and profile controls. Filters collapse with an include/exclude count summary and open for configured filters.
+- All remaining manual controls stay under Advanced, including handler, URL, enrichment, and HTML article options. Advanced starts collapsed for RSS/Atom drafts.
 - Custom HTML news is an advanced fallback that requires an explicit `article_path_prefix`. The editor never guesses selectors.
+- Inline `Create and select` creates a profile and assigns it to the draft without another preview.
+- The independent profile manager retains create, rename, and confirmed delete actions without a source draft.
+- A sticky action bar keeps preview and save actions accessible on desktop and mobile, with progress and explicit save-block reasons.
+- Save requires a valid name, supported plugin, current preview, explicit existing profile, and unsaved changes. Concurrent actions remain blocked.
+- Enabled drafts offer `Save and fetch` and `Save only`. Disabled creation retains `Save only` and never requests a refresh.
+- A successful save retains the returned source ID and marks the draft clean before any refresh or synchronization.
+- Fetch or synchronization failure never rolls back a successful save or repeats source creation.
+- A new candidate needs Save, but only manual normalized changes from its selected baseline require a discard warning.
+- Untouched candidates, discovery, preview, and search text require no discard prompt. Reverted metadata or fetch edits and equivalent normalized URL/filter whitespace also require no prompt.
+- Close, editor Escape, source/candidate replacement, discovery, and `Add another` protect actual source edits with a custom discard dialog.
+- Unsubmitted profile creation or rename text warns only on editor exit, including `View source`, not source replacement. Created profiles persist after draft discard.
+- A successful save resets the draft baseline before fetch or synchronization. Failure in either later step creates no unsaved-draft warning.
+- `Duplicate draft` preserves current edits and preview without a discard prompt. Save creates a separate subscription and leaves the original unchanged.
+- Custom confirmations use an editor-owned nested modal `<dialog>`, with `Keep editing` or Cancel as the default focus.
+- Confirmation traps focus; Escape cancels only the top dialog and restores focus. Confirm runs the captured action exactly once for its owner.
+- Owner change or editor unmount invalidates pending confirmation actions. Source disable, source delete, and profile delete also use custom dialogs, never browser `confirm()`.
+- Native `beforeunload` protection applies only to actual source edits, unsubmitted profile text, or a pending mutation, not untouched candidates or preview.
+- Browsers own unavoidable reload, navigation-away, and tab-close prompts. Custom in-app dialogs do not replace or control those prompts.
+- Fetch failures offer an explicit fetch-only retry against the saved ID. Synchronization retry reloads data without source writes or refreshes.
+- Saved-source enable, disable, duplicate draft, confirmed delete, and `Fetch latest` remain independent actions.
+- `Add another` resets the source entry and returns focus to search. New candidates require explicit profile selection, without an implicit default.
+- After successful fetch and synchronization, `View source` selects the saved source's profile, ID, and name in the URL. It requires the current owner.
+- `View source` closes the editor and preserves the current time window and sort order. It never changes identity.
+- If the window excludes fetched items, offer a wider window through the existing Window control. Never widen the window automatically.
 - Resolves `/me` before account data and preserves the anonymous capability across sign-in, sign-out, and imports.
 - Offers GitHub sign-in when authentication is enabled. All GitHub users can sign in.
 - The account-error screen offers explicit cookie reset without loss of anonymous data, including when authentication is disabled.
@@ -320,8 +374,15 @@ Behavior:
 - Treats URL query parameters as the source of truth for visible feed selections.
 - Writes selected profile, time window, sort order, and source filter to the URL immediately.
 - Reads those query parameters on page load and browser back/forward navigation.
+- URL state updater callbacks remain pure, with no history side effects. Each navigation action writes history once outside the updater.
+- One Back action restores the prior selection, including after `View source`. Back/forward navigation never adds a history entry.
+- An active source filter sends API `source_id` before the 200-item limit. Source-filter changes request new data, not just client-side filtering.
+- Newer editor profile synchronization supersedes older profile loads. Late successes and errors cannot replace the newer profiles, close the editor, or discard its draft.
+- Genuine current identity failures still block account access. Stale-profile handling never bypasses identity checks.
 - Renders HTML and Markdown safely in card previews.
 - Renders changes as card-style items with source, publication time, title, summary/content preview, and link.
+- `Change` and preview types include `metadata: Record<string, unknown>`. Fallback commit cards show a Commit badge when both fallback markers match.
+- Preview explains no releases and one item per commit when returned metadata signals `fallback_reason: "no_releases"`. Empty results retain the normal empty-preview message.
 - Supports sorting by newest, oldest, and source. The order applies to the shelf and the desk.
 - Shows two queues of the same card style: the shelf above the desk.
 - The desk holds entries that are neither cleared nor shelved. Desk actions: open source, shelf, note, clear from desk.
@@ -340,15 +401,20 @@ Behavior:
 - Press `e` to open the source editor. The editor blocks feed shortcuts.
 - Press `p`, `w`, or `t` to focus the profile, window, or order control. Native form keys control the selection.
 - Enter preserves native button and link activation. Held action keys do not repeat; card navigation keys repeat.
-- The control panel shows a restore control when cleared entries exist in the loaded window. It clears the dismissed flag on all of them.
+- The control panel offers Restore when loaded dismissed entries exist. Restore covers only the loaded profile, window, and active source filter, up to 200 items.
+- Without a source filter, Restore covers loaded dismissed entries across the profile. It preserves notes and shelf flags; it never restores unloaded entries.
 - The note control is an arrow that expands a text box on the card. Saving a note from the desk shelves the entry. Cmd/Ctrl+Enter saves, Escape closes.
-- Empty queues render a one-line message inside the queue header.
+- Empty queues use one-line messages in the existing queue headers, without a duplicate empty-desk panel.
+- The desk header distinguishes feed load in progress, load error, no active sources, items on the shelf, cleared items, and no unread items.
+- Empty-desk guidance points to source management, restore, or the existing Window control as appropriate. Account setup remains separate.
 - The control panel collapses to one row of stats and one row of selects below the large breakpoint.
 - The backend persists dismissed, saved, and note state for the current owner.
 - Anonymous browser `localStorage` holds a UUIDv4 bearer capability, not the authoritative change state.
 - Feed data, profiles, sources, shelf state, and notes are private to the owner, not shared across users.
 - Old browser-state import requires an explicit action. It only matches the destination owner's source keys and preserves existing server state.
 - An account change discards the old feed, drafts, and undo state. Late responses cannot update the new account.
+- Unsaved card notes remain in memory across source, profile, window, and feed reloads for the same owner.
+- Successful note writes clear their local overrides. Notes without local edits always display the current server value.
 - On `401` or `412`, the frontend resolves `/me` again. It never retries the mutation automatically.
 - Feed mutations are serial. After a failed mutation, the frontend reloads the feed before another mutation.
 - Shows an empty state when no changes are cached.

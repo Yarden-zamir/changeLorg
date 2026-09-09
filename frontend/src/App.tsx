@@ -5,7 +5,7 @@ import { ChangeCard } from "./components/ChangeCard";
 import { AccountArea } from "./components/AccountArea";
 import { SourceEditor } from "./components/SourceEditor";
 import { Badge } from "./components/ui/badge";
-import { anonymousTokenKey, api, errorMessage, getIdentity, identityInvalidatedEvent, invalidateIdentity, resetSession, type Identity, type Profile } from "./lib/api";
+import { anonymousTokenKey, api, ApiError, errorMessage, getIdentity, identityInvalidatedEvent, invalidateIdentity, resetSession, type Identity, type Profile } from "./lib/api";
 import { changeKey, dateValue, openChange, type CardLocation, type Change, type ViewChange } from "./lib/changes";
 
 type UserChangeState = {
@@ -61,8 +61,10 @@ const sortOptions: Array<{ value: SortKey; label: string }> = [
   { value: "source", label: "Group by source" },
 ];
 
-async function fetchChanges(owner: string, feedWindow: FeedWindow, profile: ProfileName, signal: AbortSignal): Promise<Change[]> {
-  return api<Change[]>(`/changes?since=${feedWindow}&limit=200&include_dismissed=true&profile=${encodeURIComponent(profile)}`, { owner, signal });
+async function fetchChanges(owner: string, feedWindow: FeedWindow, profile: ProfileName, sourceId: number | null, signal: AbortSignal): Promise<Change[]> {
+  const query = new URLSearchParams({ since: feedWindow, limit: "200", include_dismissed: "true", profile });
+  if (sourceId !== null) query.set("source_id", String(sourceId));
+  return api<Change[]>(`/changes?${query}`, { owner, signal });
 }
 
 function isFeedWindow(value: string | null): value is FeedWindow {
@@ -179,12 +181,14 @@ export default function App() {
   const [revision, setRevision] = useState(0);
   const [editorOpen, setEditorOpen] = useState(false);
   const request = useRef(0);
+  const profileRequest = useRef(0);
   const refreshProfiles = useRef(true);
 
   async function reload(force = true) {
     if (resetLock.current) return;
     if (force) refreshProfiles.current = true;
     const ticket = ++request.current;
+    let profileTicket: number | null = null;
     try {
       const next = await getIdentity();
       if (ticket !== request.current) return;
@@ -196,17 +200,22 @@ export default function App() {
         setEditorOpen(false);
       }
       if (changed || refreshProfiles.current) {
+        profileTicket = ++profileRequest.current;
         const loaded = await api<Profile[]>("/profiles", { owner: next.id });
         if (ticket !== request.current) return;
-        refreshProfiles.current = false;
-        setProfiles(loaded);
-        setRevision((value) => value + 1);
+        if (profileTicket === profileRequest.current) {
+          refreshProfiles.current = false;
+          setProfiles(loaded);
+          setRevision((value) => value + 1);
+        }
       }
       currentIdentity.current = next;
       setIdentity(next);
       setError("");
     } catch (cause) {
       if (ticket !== request.current) return;
+      if (profileTicket !== null && profileTicket !== profileRequest.current) return;
+      profileRequest.current++;
       invalidateIdentity();
       currentIdentity.current = null;
       setIdentity(null);
@@ -220,6 +229,7 @@ export default function App() {
     if (resetLock.current) return;
     resetLock.current = true;
     request.current++;
+    profileRequest.current++;
     setResetPending(true);
     setResetError("");
     try {
@@ -239,6 +249,7 @@ export default function App() {
     void reload();
     const check = () => { if (document.visibilityState === "visible") void reload(false); };
     const reset = () => {
+      profileRequest.current++;
       invalidateIdentity();
       currentIdentity.current = null;
       setIdentity(null);
@@ -258,6 +269,7 @@ export default function App() {
     window.addEventListener(identityInvalidatedEvent, reset);
     return () => {
       request.current++;
+      profileRequest.current++;
       window.removeEventListener("focus", check);
       window.removeEventListener("pageshow", check);
       document.removeEventListener("visibilitychange", check);
@@ -271,7 +283,20 @@ export default function App() {
     {identity ? <>
       <AccountArea key={`${identity.id}:${identity.authenticated}`} identity={identity} onReload={() => reload()} onEdit={() => setEditorOpen(true)} />
       <Feed key={`${identity.id}:${identity.authenticated}`} owner={identity.id} profiles={profiles} revision={revision} onEdit={() => setEditorOpen(true)} />
-      {editorOpen ? <SourceEditor key={identity.id} owner={identity.id} profiles={profiles} onChanged={() => reload()} onClose={() => setEditorOpen(false)} /> : null}
+      {editorOpen ? <SourceEditor key={identity.id} owner={identity.id} profiles={profiles} onChanged={async () => {
+        const ticket = ++profileRequest.current;
+        const loaded = await api<Profile[]>("/profiles", { owner: identity.id });
+        if (ticket !== profileRequest.current) throw new ApiError("A newer profile refresh started. Retry sync to confirm the current list.");
+        refreshProfiles.current = false;
+        setProfiles(loaded);
+        setRevision((value) => value + 1);
+      }} onClose={() => setEditorOpen(false)} onViewSource={(source) => {
+        if (currentIdentity.current?.id !== source.owner_id) return;
+        window.history.pushState(null, "", urlForState({ ...readUrlState(), profile: source.config.profile, sourceId: source.id, sourceName: source.name }));
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        setEditorOpen(false);
+        window.scrollTo({ top: 0 });
+      }} /> : null}
     </> : <section className="mx-auto max-w-3xl py-10">
       <h1 className="mb-5 font-serif text-4xl font-black">changelorg.</h1>
       {error ? <>
@@ -313,11 +338,9 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
   const sort = urlState.sort;
 
   function updateUrlState(patch: Partial<UrlState>, mode: "push" | "replace" = "push") {
-    setUrlState((current) => {
-      const next = { ...current, ...patch };
-      window.history[mode === "push" ? "pushState" : "replaceState"](null, "", urlForState(next));
-      return next;
-    });
+    const next = { ...readUrlState(), ...patch };
+    window.history[mode === "push" ? "pushState" : "replaceState"](null, "", urlForState(next));
+    setUrlState(next);
   }
 
   useEffect(() => {
@@ -340,18 +363,15 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     setError(null);
     setChanges([]);
     setLastAction(null);
-    setOpenNotes({});
-    setNoteDrafts({});
     setFocusedKey(null);
     scrollAnchor.current = null;
-    (selectedProfile ? fetchChanges(owner, feedWindow, selectedProfile, controller.signal) : Promise.resolve([]))
+    (selectedProfile ? fetchChanges(owner, feedWindow, selectedProfile, urlState.sourceId, controller.signal) : Promise.resolve([]))
       .then((loaded) => {
         if (cancelled) {
           return;
         }
         setChanges(loaded);
         needsReload.current = false;
-        setNoteDrafts(Object.fromEntries(loaded.map((change) => [changeKey(change), change.note])));
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -369,7 +389,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
       controller.abort();
       loadEpoch.current++;
     };
-  }, [owner, feedWindow, selectedProfile, revision, retry]);
+  }, [owner, feedWindow, selectedProfile, urlState.sourceId, revision, retry]);
 
   useEffect(() => {
     if (!lastAction) {
@@ -440,13 +460,17 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     const epoch = loadEpoch.current;
     try {
       const updated = await api<Change>(`/changes/${change.id}`, { owner, method: "PATCH", body: patch });
+      if (patch.note !== undefined) setNoteDrafts((current) => {
+        const next = { ...current };
+        delete next[change.change_key];
+        return next;
+      });
       if (epoch !== loadEpoch.current) {
         setRetry((value) => value + 1);
         return false;
       }
       if (removes) latestAnchor.current(change);
       setChanges((current) => current.map((item) => item.id === updated.id ? updated : item));
-      if (patch.note !== undefined) setNoteDrafts((current) => ({ ...current, [change.change_key]: updated.note }));
       setLastAction(label ? { id: change.id, changeKey: change.change_key, label, previous: { dismissed: change.dismissed, saved: change.saved, note: change.note } } : null);
       return true;
     } catch (cause) {
@@ -483,13 +507,12 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     const success = await updateChangeState(change, nextSaved ? { saved: true } : { saved: false, note: "" }, nextSaved ? "Shelved" : "Back on the desk", true);
     if (success && !nextSaved) {
       setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
-      setNoteDrafts((current) => ({ ...current, [change.change_key]: "" }));
     }
     return success;
   }
 
   async function onSaveNote(change: ViewChange) {
-    const success = await updateChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? "" }, change.saved ? null : "Shelved with note", !change.saved);
+    const success = await updateChangeState(change, { saved: true, note: noteDrafts[change.change_key] ?? change.note }, change.saved ? null : "Shelved with note", !change.saved);
     if (success) {
       setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
     }
@@ -620,7 +643,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     pending: pending || needsReload.current,
     location,
     focused: focusedKey === change.change_key,
-    noteDraft: noteDrafts[change.change_key] ?? "",
+    noteDraft: noteDrafts[change.change_key] ?? change.note,
     noteOpen: openNotes[change.change_key] ?? false,
     onFocus: () => setFocusedKey(change.change_key),
     onClear: () => onClear(change),
@@ -628,7 +651,12 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     onSaveNote: () => onSaveNote(change),
     onSourceFilter: () => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name }),
     onToggleNote: () => onToggleNote(change),
-    onUpdateDraft: (value: string) => setNoteDrafts((current) => ({ ...current, [change.change_key]: value })),
+    onUpdateDraft: (value: string) => setNoteDrafts((current) => {
+      const next = { ...current };
+      if (value === change.note) delete next[change.change_key];
+      else next[change.change_key] = value;
+      return next;
+    }),
   });
 
   return (
@@ -689,14 +717,16 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
 
           <section data-queue="desk" className="rounded-[2rem] border border-stone-950/15 bg-[#fffdf7]/90 p-4 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
             <QueueHeader count={deskChanges.length} icon={<Newspaper className="h-4 w-4" />} swipeHint="Swipe left to clear, right to shelf." title="The desk" tone="desk">
-              {deskChanges.length} readable {profileLabel(selectedProfile)} item{deskChanges.length === 1 ? "" : "s"} from the last {windowLabel(feedWindow)}. Shelf, notes, and read state stay on the server.
+              {isLoading ? "Load your feed..." : error ? "The feed could not load. Retry above." : sourceCount === 0 ? "Add or enable a source to fill your desk."
+                : deskChanges.length ? `${deskChanges.length} readable ${profileLabel(selectedProfile)} item${deskChanges.length === 1 ? "" : "s"} from the last ${windowLabel(feedWindow)}.`
+                  : shelfChanges.length ? "Your current items are on the shelf."
+                    : dismissedCount ? "Desk is clear. Restore cleared items from the panel or choose a wider window."
+                      : "No unread items in this window. Try a wider window or another source."}
             </QueueHeader>
 
             {isLoading ? (
               <LoadingState />
-            ) : deskChanges.length === 0 ? (
-              <EmptyState />
-            ) : (
+            ) : deskChanges.length === 0 ? null : (
               <div className="mt-5 grid gap-4">
                 {deskChanges.map((change) => (
                   <ChangeCard key={change.change_key} {...cardProps(change, "desk")} />
@@ -931,16 +961,6 @@ function LoadingState() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="mt-5 rounded-[1.75rem] border border-dashed border-stone-950/25 bg-stone-100/80 p-6 text-center">
-      <Inbox className="mx-auto h-9 w-9 text-stone-600" />
-      <h3 className="mt-4 font-serif text-2xl font-black">Desk is clear</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">Try a wider window, another profile, a different source filter, or restore cleared items from the panel.</p>
     </div>
   );
 }

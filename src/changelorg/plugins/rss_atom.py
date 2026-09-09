@@ -4,9 +4,8 @@ import calendar
 from datetime import datetime, timezone
 from typing import Any
 
-import feedparser
-
 from changelorg.enrichment import PROFILES, enrich_change, profile_for
+from changelorg.feeds import fetch_feed
 from changelorg.models import ChangeInput, Source, TimeWindow
 from changelorg.network import (
     MAX_ENTRIES,
@@ -106,10 +105,11 @@ class RssAtomPlugin:
         enrichment_profile_name = source.config.get("enrichment_profile")
         if enrichment_profile_name is not None and not isinstance(enrichment_profile_name, str):
             raise PluginConfigError("rss-atom config 'enrichment_profile' must be a string")
-        enrichment_profile = profile_for(url, enrichment_profile_name)
-
         client = PublicFetcher(user_agent=source.config.get("user_agent", "changelorg/0.1"))
-        response = client.get(url)
+        response, parsed_feed, fallback = fetch_feed(client, url)
+        enrichment_profile = profile_for(
+            str(response.url) if fallback else url, enrichment_profile_name
+        )
         enrichment_budget_exhausted = False
 
         def fetch_link(link: str) -> str | None:
@@ -120,7 +120,6 @@ class RssAtomPlugin:
                 enrichment_budget_exhausted = True
                 return None
 
-        parsed_feed = feedparser.parse(response.content)
         feed_title = str(getattr(parsed_feed.feed, "title", "")) if hasattr(parsed_feed, "feed") else ""
         entries = getattr(parsed_feed, "entries", [])
         if not entries and getattr(parsed_feed, "bozo", False):
@@ -168,6 +167,14 @@ class RssAtomPlugin:
                     published_at=published_at,
                     metadata={
                         "feed_url": url,
+                        **(
+                            {
+                                "effective_feed_url": str(response.url),
+                                "feed_kind": "commit",
+                                "fallback_reason": "no_releases",
+                            }
+                            if fallback else {}
+                        ),
                         "enrichment_profile": enriched.profile,
                         "quality_flags": enriched.quality_flags,
                         "raw_title": _metadata_text(str(title)),

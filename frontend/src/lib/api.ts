@@ -122,7 +122,7 @@ export async function api<T>(path: string, options: { owner: string | null; meth
 export type Identity = { id: string; authenticated: boolean; login: string | null; auth_enabled: boolean; anonymous_has_data: boolean };
 export type Profile = { name: string; source_count: number };
 export type SourceCreate = { name: string; plugin: string; config: Record<string, unknown>; enabled: boolean };
-export type Source = SourceCreate & { id: number; owner_id: string; created_at: string; updated_at: string };
+export type Source = SourceCreate & { config: Record<string, unknown> & { profile: string }; id: number; owner_id: string; created_at: string; updated_at: string };
 export type Plugin = { key: string; name: string; description: string; config_schema: { properties?: Record<string, { enum?: unknown[] }> } };
 export type TimeWindow = { start: string; end: string };
 

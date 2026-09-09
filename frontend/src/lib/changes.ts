@@ -12,6 +12,7 @@ export type Change = {
   url: string | null;
   summary: string;
   content: string;
+  metadata: Record<string, unknown>;
   published_at: string;
   fetched_at: string;
   dismissed: boolean;

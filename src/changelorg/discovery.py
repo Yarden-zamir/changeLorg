@@ -4,9 +4,9 @@ from html.parser import HTMLParser
 from string import ascii_letters, digits
 from urllib.parse import urlsplit
 
-import feedparser
 import httpx
 
+from changelorg.feeds import fetch_feed, github_release_repository
 from changelorg.models import SourceCreate
 from changelorg.network import PublicFetcher, PublicFetchError, validate_public_url
 
@@ -62,17 +62,40 @@ def normalize_discovery_url(value: str) -> httpx.URL:
     ):
         raise ValueError("Invalid GitHub owner/repo")
     suffix = parts[2:]
-    if suffix in (["releases.atom"], ["tags.atom"]):
+    if suffix in (["releases.atom"], ["tags.atom"], ["commits.atom"]):
         return url
+    if suffix[:1] == ["commits"] and len(suffix) >= 2 and suffix[-1].endswith(".atom"):
+        branch = "/".join(suffix[1:]).removesuffix(".atom")
+        if (
+            branch
+            and branch != "@"
+            and all(
+                part and not part.startswith(".") and not part.endswith((".", ".lock"))
+                for part in branch.split("/")
+            )
+            and ".." not in branch
+            and "@{" not in branch
+            and not any(
+                char in "~^:?*[\\"
+                or char.isspace()
+                or ord(char) < 32
+                or ord(char) == 127
+                for char in branch
+            )
+        ):
+            return url
+        raise ValueError("Invalid GitHub commit branch")
     if suffix == ["tags"]:
         endpoint = "tags.atom"
+    elif suffix == ["commits"]:
+        endpoint = "commits.atom"
     elif suffix in ([], ["releases"], ["releases", "latest"]) or (
         suffix[:2] == ["releases", "tag"] and len(suffix) > 2 and all(suffix[2:])
     ):
         endpoint = "releases.atom"
     else:
         raise ValueError(
-            "Unsupported GitHub path; use a repository, releases, or tags URL"
+            "Unsupported GitHub path; use a repository, releases, tags, or commits feed URL"
         )
     return httpx.URL(f"https://github.com/{owner}/{repository}/{endpoint}")
 
@@ -145,15 +168,18 @@ def _source(url: httpx.URL, *titles: str) -> SourceCreate:
 
 
 def discover_sources(value: str) -> list[SourceCreate]:
-    """Fetch one target. Alternates pass structural checks; preview must verify them. The API owns the shared fetch slot."""
+    """Read a target with repository fallback. Preview verifies alternates. The API owns the shared fetch slot."""
     url = normalize_discovery_url(value)
     client = PublicFetcher()
-    response = client.get(str(url))
-    parsed = feedparser.parse(response.content)
-    client.check_deadline()
+    response, parsed, _ = fetch_feed(client, str(url))
     if parsed.get("version"):
         title = parsed.feed.get("title", "")
-        result = [_source(response.url, title if isinstance(title, str) else "")]
+        repository = github_release_repository(url)
+        result = [
+            _source(url, f"{repository} updates")
+            if repository is not None
+            else _source(response.url, title if isinstance(title, str) else "")
+        ]
     else:
         parser = _DiscoveryParser(response.url)
         parser.feed(response.text)
