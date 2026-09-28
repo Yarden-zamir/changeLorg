@@ -110,15 +110,19 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
       assert.ok(window.y > profile.y);
       assert.equal(await page.getByLabel('Current feed selection').count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      const readingWidth = await card(page, 1).locator('.changelorg-rendered').evaluate((element) => element.getBoundingClientRect().width);
+      assert.ok(readingWidth > width * 0.78, "Article text uses most of the mobile screen width");
       if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/compact-panel-${width}.png` });
     }
   });
 
   await t.test("account actions stay in the GitHub menu and count buttons open management views", async () => {
     const { page } = await setup(true);
+    await page.evaluate(() => { window.haptics = []; Object.defineProperty(navigator, 'vibrate', { configurable: true, value: (duration) => { window.haptics.push(duration); return true; } }); });
     assert.equal(await page.getByText("Your personal change newspaper", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), false);
     await page.getByLabel("GitHub account menu").click();
+    assert.deepEqual(await page.evaluate(() => window.haptics), [10]);
     assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), true);
     await page.keyboard.press("Escape");
     assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), false);

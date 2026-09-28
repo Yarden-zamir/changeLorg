@@ -86,7 +86,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
     <div ref={slot} className="min-w-0" style={{ overflowAnchor: "none" }}>
     <article
       {...swipe.handlers}
-      className={`change-card group relative overflow-hidden rounded-[1.75rem] border bg-[#fffaf0] shadow-[5px_5px_0_rgba(28,25,23,0.14)] outline-none ${
+      className={`change-card group relative overflow-hidden rounded-2xl border bg-[#fffaf0] shadow-[5px_5px_0_rgba(28,25,23,0.14)] outline-none sm:rounded-[1.75rem] ${
         onShelf ? "border-amber-950/40" : "border-stone-950"
       } ${focused ? "ring-2 ring-amber-500 ring-offset-2 ring-offset-[#ece7db]" : ""}`}
       data-change-key={change.change_key}
@@ -99,7 +99,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
       <SwipeHint action={rightAction} progress={swipe.rightProgress} side="right" />
 
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_210px]">
-        <div className="min-w-0 p-4 sm:p-5">
+        <div className="min-w-0 p-3 sm:p-5">
           <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-stone-500">
             <button
               className="inline-flex min-w-0 max-w-full items-center rounded-xl border border-stone-950 bg-stone-950 px-2.5 py-1 text-[#fff8e8] transition-colors hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-[#fffaf0]"
@@ -127,11 +127,11 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
           </h3>
 
           {change.note.trim() && !noteOpen ? (
-            <p className="mt-4 whitespace-pre-line rounded-2xl border border-amber-900/20 bg-amber-100/80 px-4 py-3 text-sm leading-6 text-stone-800">{change.note}</p>
+            <p className="mt-3 whitespace-pre-line rounded-xl border border-amber-900/20 bg-amber-100/80 px-2 py-2 text-sm leading-6 text-stone-800 sm:mt-4 sm:rounded-2xl sm:px-4 sm:py-3">{change.note}</p>
           ) : null}
 
           {preview.trim() ? (
-            <div className="scrollbar-none mt-4 max-h-72 touch-pan-y overflow-y-auto rounded-2xl border border-stone-950/10 bg-white/65 px-4 py-3">
+            <div className="scrollbar-none mt-3 max-h-72 touch-pan-y overflow-y-auto rounded-xl border border-stone-950/10 bg-white/65 px-2 py-2 sm:mt-4 sm:rounded-2xl sm:px-4 sm:py-3">
               <RenderedText value={preview} />
             </div>
           ) : (
@@ -139,7 +139,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
           )}
         </div>
 
-        <div className={`flex flex-col justify-end border-t border-stone-950 p-4 md:justify-start md:gap-4 md:border-l md:border-t-0 ${onShelf ? "bg-[#f3e2a8]" : "bg-[#eee6d6]"}`}>
+        <div className={`flex flex-col justify-end border-t border-stone-950 p-3 sm:p-4 md:justify-start md:gap-4 md:border-l md:border-t-0 ${onShelf ? "bg-[#f3e2a8]" : "bg-[#eee6d6]"}`}>
           <Button
             className="hidden whitespace-nowrap rounded-xl bg-transparent px-3 text-stone-700 hover:bg-stone-950 hover:text-[#fff8e8] md:inline-flex"
             disabled={pending || swipe.leaving !== null}
@@ -195,7 +195,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
       </div>
 
       {noteOpen ? (
-        <div className="border-t border-stone-950 bg-[#fff8e8] p-4 sm:p-5" id={noteId}>
+        <div className="border-t border-stone-950 bg-[#fff8e8] p-3 sm:p-5" id={noteId}>
           <label className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.18em] text-stone-600" htmlFor={`${noteId}-textarea`}>
             {onShelf ? <BookmarkCheck className="h-4 w-4" /> : <BookmarkPlus className="h-4 w-4" />}
             Shelf note

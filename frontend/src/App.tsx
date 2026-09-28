@@ -5,6 +5,7 @@ import { ChangeCard } from "./components/ChangeCard";
 import { AccountArea } from "./components/AccountArea";
 import { SourceEditor } from "./components/SourceEditor";
 import { Badge } from "./components/ui/badge";
+import { interactionHaptic } from "./lib/haptics";
 import { anonymousTokenKey, api, ApiError, clearReadCache, errorMessage, getIdentity, identityInvalidatedEvent, invalidateIdentity, resetSession, type Identity, type Profile } from "./lib/api";
 import { changeKey, dateValue, openChange, type CardLocation, type Change, type ViewChange } from "./lib/changes";
 
@@ -181,6 +182,14 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 export default function App() {
+  useEffect(() => {
+    document.addEventListener("click", interactionHaptic);
+    document.addEventListener("change", interactionHaptic);
+    return () => {
+      document.removeEventListener("click", interactionHaptic);
+      document.removeEventListener("change", interactionHaptic);
+    };
+  }, []);
   const [identity, setIdentity] = useState<Identity | null>(null);
   const currentIdentity = useRef<Identity | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -290,7 +299,7 @@ export default function App() {
     };
   }, []);
 
-  return <div className="min-h-screen bg-[#ece7db] px-3 py-4 text-stone-950 sm:px-5 lg:px-8">
+  return <div className="min-h-screen bg-[#ece7db] px-1 py-2 text-stone-950 sm:px-5 sm:py-4 lg:px-8">
     {identity ? <>
       <AccountArea key={`${identity.id}:${identity.authenticated}`} identity={identity} onReload={() => reload()} onEdit={() => setEditorOpen(true)} />
       <Feed key={`${identity.id}:${identity.authenticated}`} owner={identity.id} profiles={profiles} revision={revision} onEdit={() => setEditorOpen(true)} />
@@ -717,7 +726,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     <main className="overflow-x-hidden text-stone-950 [overflow-anchor:none]">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(120,53,15,0.16),transparent_32rem),linear-gradient(90deg,rgba(28,25,23,0.045)_1px,transparent_1px),linear-gradient(rgba(28,25,23,0.045)_1px,transparent_1px)] bg-[length:auto,44px_44px,44px_44px]" />
 
-      <section className="relative mx-auto grid max-w-7xl gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
+      <section className="relative mx-auto grid max-w-7xl gap-3 sm:gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
         <ControlPanel
           queueCount={deskChanges.length}
           dismissedCount={dismissedCount}
@@ -738,7 +747,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
           sourceCount={sourceCount}
         />
 
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-3 sm:gap-5">
           {error ? <div><ErrorNote message={error} /><button className="editor-button mt-2" disabled={pending} onClick={() => { clearReadCache(); setRetry((value) => value + 1); }}>Reload desk from server</button></div> : null}
           {pending ? <p role="status" className="sr-only">Save in progress...</p> : null}
           {!isLoading && sourceCount === 0 ? <section className="rounded-[2rem] border border-stone-950 bg-[#fffaf0] p-6">
@@ -747,7 +756,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
             <button className="editor-button editor-primary" onClick={onEdit}>{profiles.length === 0 ? "Find your first source" : "Add or manage sources"}</button>
           </section> : null}
 
-          <section data-queue="shelf" className="rounded-[2rem] border border-amber-900/30 bg-[#f9d978] p-4 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)] sm:p-5">
+          <section data-queue="shelf" className="rounded-2xl border border-amber-900/30 bg-[#f9d978] px-1 py-3 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)] sm:rounded-[2rem] sm:p-5">
             <QueueHeader
               count={shelfChanges.length}
               icon={<BookmarkCheck className="h-4 w-4" />}
@@ -769,7 +778,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
             )}
           </section>
 
-          <section data-queue="desk" className="rounded-[2rem] border border-stone-950/15 bg-[#fffdf7]/90 p-4 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
+          <section data-queue="desk" className="rounded-2xl border border-stone-950/15 bg-[#fffdf7]/90 px-1 py-3 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:rounded-[2rem] sm:p-5">
             <QueueHeader count={deskChanges.length} icon={<Newspaper className="h-4 w-4" />} swipeHint="Swipe left to clear, right to shelf." title="The desk" tone="desk">
               {isLoading ? "Load your feed..." : error ? "The feed could not load. Retry above." : sourceCount === 0 ? "Add or enable a source to fill your desk."
                 : deskChanges.length ? `${deskChanges.length} readable ${profileLabel(selectedProfile)} item${deskChanges.length === 1 ? "" : "s"} from the last ${windowLabel(feedWindow)}.`

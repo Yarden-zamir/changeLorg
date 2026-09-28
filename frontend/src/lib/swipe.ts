@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { haptic } from "./haptics";
 
 export type SwipeDirection = "left" | "right";
 
@@ -78,6 +79,7 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean, disabl
       return;
     }
     if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
+    haptic();
     const leaves = onSwipe(direction);
     if (leaves) {
       setState({ dx: 0, dragging: false, leaving: direction });
