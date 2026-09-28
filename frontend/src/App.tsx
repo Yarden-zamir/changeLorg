@@ -37,6 +37,16 @@ type ScrollAnchor = {
   top: number;
 };
 
+type FeedWrite = {
+  change: ViewChange;
+  patch: UserChangeState;
+  label: string | null;
+  epoch: number;
+  noteVersion: number;
+  done: Promise<boolean>;
+  resolve: (success: boolean) => void;
+};
+
 const undoTimeoutMs = 8000;
 const anchorTopMin = 16;
 const defaultUrlState: UrlState = {
@@ -163,7 +173,7 @@ function layoutTop(element: HTMLElement | null) {
     return anchorTopMin;
   }
   const parent = element.offsetParent;
-  return parent instanceof HTMLElement ? parent.getBoundingClientRect().top + element.offsetTop : element.getBoundingClientRect().top;
+  return parent instanceof HTMLElement ? parent.getBoundingClientRect().top + parent.clientTop + element.offsetTop : element.getBoundingClientRect().top;
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -328,10 +338,22 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
   const scrollOnFocus = useRef(false);
   const shortcutDialog = useRef<HTMLDialogElement>(null);
   const mutationLock = useRef(false);
+  const writes = useRef<FeedWrite[]>([]);
+  const writeController = useRef<AbortController | null>(null);
+  const noteVersions = useRef<Record<string, number>>({});
   const needsReload = useRef(false);
   const [pending, setPending] = useState(false);
   const loadEpoch = useRef(0);
   const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    writeController.current = controller;
+    return () => {
+      controller.abort();
+      for (const job of writes.current.splice(0)) job.resolve(false);
+    };
+  }, []);
 
   const selectedProfile = profiles.some((profile) => profile.name === urlState.profile) ? urlState.profile : profiles[0]?.name ?? "";
   const feedWindow = urlState.feedWindow;
@@ -365,7 +387,14 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     setLastAction(null);
     setFocusedKey(null);
     scrollAnchor.current = null;
-    (selectedProfile ? fetchChanges(owner, feedWindow, selectedProfile, urlState.sourceId, controller.signal) : Promise.resolve([]))
+    // A new scope reads after existing writes, so an old response never enters the new feed.
+    const waiting = writes.current.map((job) => job.done);
+    (async () => {
+      await Promise.all(waiting);
+      if (cancelled) return [];
+      if (waiting.length && needsReload.current) throw new ApiError("A save failed. Reload the desk to confirm the server state.");
+      return selectedProfile ? fetchChanges(owner, feedWindow, selectedProfile, urlState.sourceId, controller.signal) : [];
+    })()
       .then((loaded) => {
         if (cancelled) {
           return;
@@ -451,38 +480,62 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     }
   }, [focusedKey, visibleKeys.join("\n")]);
 
-  // Serialize desk mutations. Revisit per-item locks only if concurrent card writes become necessary.
-  async function updateChangeState(change: ViewChange, patch: UserChangeState, label: string | null, removes = false) {
-    if (mutationLock.current || needsReload.current || isLoading) return false;
-    mutationLock.current = true;
+  function updateChangeState(change: ViewChange, patch: UserChangeState, label: string | null, removes = false): Promise<boolean> {
+    if (mutationLock.current || needsReload.current || isLoading || writeController.current?.signal.aborted ||
+      writes.current.some((job) => job.change.id === change.id)) return Promise.resolve(false);
+    let resolve!: (success: boolean) => void;
+    const done = new Promise<boolean>((settle) => { resolve = settle; });
+    const job: FeedWrite = { change: structuredClone(change), patch: { ...patch }, label, epoch: loadEpoch.current,
+      noteVersion: noteVersions.current[change.change_key] ?? 0, done, resolve };
+    writes.current.push(job);
     setPending(true);
     setError(null);
-    const epoch = loadEpoch.current;
-    try {
-      const updated = await api<Change>(`/changes/${change.id}`, { owner, method: "PATCH", body: patch });
-      if (patch.note !== undefined) setNoteDrafts((current) => {
-        const next = { ...current };
-        delete next[change.change_key];
-        return next;
-      });
-      if (epoch !== loadEpoch.current) {
-        setRetry((value) => value + 1);
-        return false;
-      }
-      if (removes) latestAnchor.current(change);
-      setChanges((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setLastAction(label ? { id: change.id, changeKey: change.change_key, label, previous: { dismissed: change.dismissed, saved: change.saved, note: change.note } } : null);
-      return true;
-    } catch (cause) {
-      if (epoch === loadEpoch.current) {
+    setLastAction(null);
+    if (removes) latestAnchor.current(change);
+    setChanges((current) => current.map((item) => changeKey(item) === change.change_key ? { ...item, ...patch } : item));
+    if (writes.current.length === 1) void drainWrites();
+    return done;
+  }
+
+  async function drainWrites() {
+    const controller = writeController.current;
+    if (!controller || controller.signal.aborted) return;
+    while (writes.current.length) {
+      const job = writes.current[0];
+      const { change, patch, epoch } = job;
+      try {
+        const updated = await api<Change>(`/changes/${change.id}`, { owner, method: "PATCH", body: patch, signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (updated.id !== change.id || changeKey(updated) !== change.change_key) throw new ApiError("The server returned a different card. Reload the desk.");
+        const sameScope = epoch === loadEpoch.current;
+        const sameNote = job.noteVersion === (noteVersions.current[change.change_key] ?? 0);
+        if (sameScope) {
+          setChanges((current) => current.map((item) => changeKey(item) === change.change_key ? updated : item));
+        }
+        if (patch.note !== undefined && sameNote) setNoteDrafts((current) => {
+          if (current[change.change_key] !== patch.note) return current;
+          const next = { ...current };
+          delete next[change.change_key];
+          return next;
+        });
+        writes.current.shift();
+        job.resolve(sameScope && sameNote);
+        if (!writes.current.length) {
+          setLastAction(sameScope && job.label ? { id: change.id, changeKey: change.change_key, label: job.label,
+            previous: { dismissed: change.dismissed, saved: change.saved, note: change.note } } : null);
+        }
+      } catch (cause) {
+        if (controller.signal.aborted) return;
         needsReload.current = true;
+        const cancelled = writes.current.splice(0);
+        const previous = new Map(cancelled.filter((item) => item.epoch === loadEpoch.current).map((item) => [item.change.change_key, item.change]));
+        setChanges((current) => current.map((item) => previous.get(changeKey(item)) ?? item));
+        setLastAction(null);
         setError(errorMessage(cause));
-      } else setRetry((value) => value + 1);
-      return false;
-    } finally {
-      mutationLock.current = false;
-      setPending(false);
+        for (const item of cancelled) item.resolve(false);
+      }
     }
+    setPending(false);
   }
 
   /** Record where `change` sits so the following card can take its place, and move focus to it. */
@@ -491,9 +544,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     if (index < 0) return;
     const nextKey = visibleKeys[index + 1] ?? visibleKeys[index - 1] ?? null;
     scrollAnchor.current = { nextKey, top: layoutTop(cardElement(change.change_key)) };
-    if (focusedKey === change.change_key) {
-      setFocusedKey(nextKey);
-    }
+    setFocusedKey(nextKey);
   }
   const latestAnchor = useRef(anchorAfterRemoval);
   latestAnchor.current = anchorAfterRemoval;
@@ -516,14 +567,16 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     if (success) {
       setOpenNotes((current) => ({ ...current, [change.change_key]: false }));
     }
+    return success;
   }
 
   function onToggleNote(change: ViewChange) {
+    noteVersions.current[change.change_key] = (noteVersions.current[change.change_key] ?? 0) + 1;
     setOpenNotes((current) => ({ ...current, [change.change_key]: !(current[change.change_key] ?? false) }));
   }
 
   async function onUndo() {
-    if (!lastAction) {
+    if (!lastAction || writes.current.length || mutationLock.current) {
       return;
     }
     const { changeKey: key, previous, id } = lastAction;
@@ -535,7 +588,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
   }
 
   async function onRestoreCleared() {
-    if (mutationLock.current || needsReload.current || isLoading || !dismissedCount) return;
+    if (mutationLock.current || writes.current.length || needsReload.current || isLoading || !dismissedCount) return;
     mutationLock.current = true;
     setPending(true);
     setError(null);
@@ -640,7 +693,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
 
   const cardProps = (change: ViewChange, location: CardLocation) => ({
     change,
-    pending: pending || needsReload.current,
+    pending: mutationLock.current || writes.current.some((job) => job.change.id === change.id) || needsReload.current,
     location,
     focused: focusedKey === change.change_key,
     noteDraft: noteDrafts[change.change_key] ?? change.note,
@@ -651,12 +704,10 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
     onSaveNote: () => onSaveNote(change),
     onSourceFilter: () => updateUrlState({ sourceId: change.source_id, sourceName: change.source_name }),
     onToggleNote: () => onToggleNote(change),
-    onUpdateDraft: (value: string) => setNoteDrafts((current) => {
-      const next = { ...current };
-      if (value === change.note) delete next[change.change_key];
-      else next[change.change_key] = value;
-      return next;
-    }),
+    onUpdateDraft: (value: string) => {
+      noteVersions.current[change.change_key] = (noteVersions.current[change.change_key] ?? 0) + 1;
+      setNoteDrafts((current) => ({ ...current, [change.change_key]: value }));
+    },
   });
 
   return (
@@ -686,7 +737,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
 
         <div className="flex min-w-0 flex-col gap-5">
           {error ? <div><ErrorNote message={error} /><button className="editor-button mt-2" disabled={pending} onClick={() => setRetry((value) => value + 1)}>Reload desk from server</button></div> : null}
-          {pending ? <p role="status" className="fixed bottom-4 right-4 z-20 rounded-xl border border-stone-950 bg-[#fffaf0] px-4 py-2 text-sm font-semibold shadow-lg">Save in progress...</p> : null}
+          {pending ? <p role="status" className="sr-only">Save in progress...</p> : null}
           {!isLoading && sourceCount === 0 ? <section className="rounded-[2rem] border border-stone-950 bg-[#fffaf0] p-6">
             <h2 className="font-serif text-3xl font-black">Build your edition</h2>
             <p className="my-3 text-sm leading-6">{profiles.length === 0 ? "Paste a website or GitHub link to discover and preview a source. Create a profile when you want to save." : "This profile has no active sources. Add or enable a source, then fetch its latest changes."}</p>

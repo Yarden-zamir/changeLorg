@@ -83,7 +83,7 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => boolean, disabl
       setState({ dx: 0, dragging: false, leaving: direction });
       return;
     }
-    // Nudge in the swipe direction, then snap back.
+    // The action may already have removed the card optimistically.
     setState({ dx: direction === "left" ? -48 : 48, dragging: false, leaving: null });
     nudgeTimer.current = window.setTimeout(() => setState({ dx: 0, dragging: false, leaving: null }), nudgeDurationMs);
   }

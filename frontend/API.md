@@ -204,7 +204,7 @@ The general request-body limit and authentication-service failures still apply.
 5. Restore sets only `dismissed: false` for the supplied IDs. It preserves notes and shelf flags.
 6. Restore applies only to loaded dismissed entries within the profile, time window, and active source filter, up to 200 items. Without a source filter, it covers loaded entries across the profile.
 7. The server validates ownership of every ID in a batch before it changes any state.
-8. The frontend serializes feed mutations. A failed mutation requires a feed reload before another feed mutation.
+8. The frontend serializes feed writes while applying queued changes optimistically. Only the affected cards are blocked. A failed write rolls back failed and unsent changes, cancels unsent jobs, and requires a feed reload. Undo and batch restore wait for the queue to finish.
 9. The source editor previews the last 30 days and displays at most 10 results. Preview writes no source or cached data.
 10. Save requires a successful preview of the current normalized fetch signature. Metadata-only edits retain preview; an empty preview still permits save.
 11. Source-write API calls and `Save only` never fetch changes. `Save and fetch` explicitly writes, then refreshes the enabled saved source through its existing route.

@@ -392,6 +392,9 @@ Behavior:
 - A gesture picks one axis after 10px of movement. Flatter than 45 degrees is a swipe and the page does not scroll. Steeper is a browser scroll and the card does not move. A short fast flick counts as a swipe.
 - Swipes start anywhere on the card except form controls and buttons, including on links and preview text, with mouse, pen, or touch. A click or tap on a link still opens it. A horizontal mouse drag over preview text swipes instead of selecting text.
 - The action buttons on a card run the same animation as the matching swipe.
+- During the 240ms exit, the card's layout space and queue gap collapse with the same easing, moving the following card into place continuously.
+- At animation completion the queue updates optimistically, without waiting for the server. Other cards remain usable while writes finish serially in the background.
+- Failed writes restore the failed and unsent optimistic changes, cancel unsent jobs, and require an explicit reload. Acknowledged changes remain saved. Undo waits until queued writes finish.
 - Desktop cards place Clear or Mark read at the top right, independent of content height. Mobile cards retain bottom action controls.
 - When a card leaves a queue, the card after it takes its place in the viewport. Shelving does not move the viewport even though the shelf above grows.
 - Keyboard: `j`/`k` or arrow keys move the current card, `x` clears or marks read, `s` shelves or unshelves, `o` or Enter opens the source, `n` toggles the note, `z` undoes. Keys are ignored while typing.

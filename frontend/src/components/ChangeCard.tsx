@@ -26,7 +26,7 @@ export type ChangeCardProps = {
   onClear: () => Promise<boolean>;
   /** Desk: move to shelf. Shelf: put back on the desk. */
   onToggleShelf: () => Promise<boolean>;
-  onSaveNote: () => void;
+  onSaveNote: () => Promise<boolean>;
   onSourceFilter: () => void;
   onToggleNote: () => void;
   onUpdateDraft: (value: string) => void;
@@ -44,14 +44,12 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
   const noteId = `note-${change.id}`;
   const onShelf = location === "shelf";
   const url = safeUrl(change.url);
-  const leaveTimer = useRef<number | null>(null);
+  const slot = useRef<HTMLDivElement>(null);
+  const collapse = useRef<Animation | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
-    return () => {
-      mounted.current = false;
-      if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
-    };
+    return () => { mounted.current = false; collapse.current?.cancel(); };
   }, []);
 
   const leftAction: SwipeAction = onShelf
@@ -60,20 +58,24 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
   const rightAction: SwipeAction = onShelf
     ? { label: "Open source", icon: ExternalLink, leaves: false, tone: "accent", run: () => openChange(change) }
     : { label: "Shelf", icon: BookmarkPlus, leaves: true, tone: "accent", run: onToggleShelf };
-  const actions = useRef({ left: leftAction, right: rightAction });
-  actions.current = { left: leftAction, right: rightAction };
 
   const swipe = useSwipe((direction: SwipeDirection) => {
     const action = direction === "left" ? leftAction : rightAction;
     if (action.leaves) {
-      if (leaveTimer.current !== null) return true;
-      leaveTimer.current = window.setTimeout(async () => {
-        try { await actions.current[direction].run(); }
-        finally {
-          leaveTimer.current = null;
-          if (mounted.current) swipe.reset();
-        }
-      }, leaveDurationMs);
+      if (collapse.current) return true;
+      const element = slot.current;
+      if (!element) return false;
+      const gap = element.parentElement ? parseFloat(getComputedStyle(element.parentElement).rowGap) || 0 : 0;
+      const animation = element.animate([
+        { height: `${element.offsetHeight}px`, marginBottom: "0px" },
+        { height: "0px", marginBottom: `${-gap}px` },
+      ], { duration: leaveDurationMs, easing: "ease-out", fill: "forwards" });
+      collapse.current = animation;
+      animation.onfinish = () => {
+        void Promise.resolve(action.run()).finally(() => {
+          if (mounted.current) { animation.cancel(); collapse.current = null; swipe.reset(); }
+        });
+      };
       return true;
     }
     action.run();
@@ -81,6 +83,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
   }, pending);
 
   return (
+    <div ref={slot} className="min-w-0" style={{ overflowAnchor: "none" }}>
     <article
       {...swipe.handlers}
       className={`change-card group relative overflow-hidden rounded-[1.75rem] border bg-[#fffaf0] shadow-[5px_5px_0_rgba(28,25,23,0.14)] outline-none ${
@@ -226,6 +229,7 @@ export function ChangeCard({ change, location, focused, pending, noteDraft, note
         </div>
       ) : null}
     </article>
+    </div>
   );
 }
 
