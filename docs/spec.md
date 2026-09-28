@@ -410,8 +410,8 @@ Behavior:
 - Empty queues use one-line messages in the existing queue headers, without a duplicate empty-desk panel.
 - The desk header distinguishes feed load in progress, load error, no active sources, items on the shelf, cleared items, and no unread items.
 - Empty-desk guidance points to source management, restore, or the existing Window control as appropriate. Account setup remains separate.
-- The control panel collapses to one row of stats and one row of selects below the large breakpoint.
-- A wrapped selection summary exposes full profile, window, and order values below the compact selects. Source filter names also wrap.
+- Below the large breakpoint, the control panel has a compact stats strip, a full-width profile selector, and a two-column window/order row. Dropdown labels omit redundant counts and captions.
+- Restore cleared is a separate full-width action. No repeated selection summary appears. Source filter names wrap.
 - At 320px and wider, long card titles, source names, notes, and account names wrap without page-level horizontal overflow.
 - Mobile card actions and editor confirmation buttons have at least 44px height. Source metadata uses at least 14px text.
 - The mobile editor action bar uses two columns and scrolls within 40% of viewport height on short screens.

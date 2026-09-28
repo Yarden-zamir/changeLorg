@@ -859,26 +859,20 @@ function ControlPanel({
   const selectClassName = "h-11 w-full min-w-0 rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-2 text-base font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d] sm:px-3 sm:text-sm";
   return (
     <aside className="lg:sticky lg:top-5 lg:self-start">
-      <div className="overflow-hidden rounded-[2rem] border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
+      <div className="overflow-hidden rounded-2xl border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-sm lg:rounded-[2rem] lg:shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
         <div className="hidden border-b border-[#fff8e8]/15 p-5 sm:p-6 lg:block">
           <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Personal changelog desk</Badge>
         </div>
 
-        <div className="grid grid-cols-4 gap-px border-b border-[#fff8e8]/15 bg-[#fff8e8]/15 text-center lg:grid-cols-2">
+        <div className="grid grid-cols-4 border-b border-[#fff8e8]/15 px-2 text-center lg:grid-cols-2 lg:gap-px lg:bg-[#fff8e8]/15 lg:px-0">
           <DeskStat label="desk" value={queueCount} />
           <DeskStat label="shelf" value={savedCount} />
           <DeskStat label="sources" value={sourceCount} />
-          <DeskStat label="cleared" value={dismissedCount}>
-            {dismissedCount > 0 ? (
-              <button className="mt-1 inline-flex min-h-11 items-center text-sm font-bold text-[#f8df9d] underline underline-offset-4" disabled={pending} onClick={onRestoreCleared} type="button">
-                Restore
-              </button>
-            ) : null}
-          </DeskStat>
+          <DeskStat label="cleared" value={dismissedCount} />
         </div>
 
-        <div className="grid grid-cols-3 gap-3 p-4 sm:gap-4 sm:p-6 lg:grid-cols-1">
-          <label className="block min-w-0">
+        <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-1 lg:gap-4 lg:p-6">
+          <label className="col-span-2 block min-w-0 lg:col-span-1">
             <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
               <Inbox className="h-4 w-4" />
               Profile
@@ -887,7 +881,7 @@ function ControlPanel({
               {profiles.length === 0 ? <option value="">No profiles</option> : null}
               {profiles.map((profile) => (
                 <option key={profile.name} value={profile.name}>
-                  {profileLabel(profile.name)} - {profile.source_count} source{profile.source_count === 1 ? "" : "s"}
+                  {profileLabel(profile.name)}
                 </option>
               ))}
             </select>
@@ -901,7 +895,7 @@ function ControlPanel({
             <select id="window-select" className={selectClassName} value={feedWindow} onChange={(event) => onFeedWindowChange(event.target.value as FeedWindow)}>
               {feedWindows.map((item) => (
                 <option key={item.value} value={item.value}>
-                  {item.label} - {item.caption}
+                  {item.label}
                 </option>
               ))}
             </select>
@@ -915,19 +909,16 @@ function ControlPanel({
             <select id="sort-select" className={selectClassName} value={sort} onChange={(event) => onSortChange(event.target.value as SortKey)}>
               {sortOptions.map((item) => (
                 <option key={item.value} value={item.value}>
-                  {item.label}
+                  {item.value === "newest" ? "Newest" : item.value === "oldest" ? "Oldest" : "By source"}
                 </option>
               ))}
             </select>
           </label>
 
-          <p className="col-span-3 min-w-0 text-sm leading-6 [overflow-wrap:anywhere] lg:hidden" aria-label="Current feed selection">
-            <span className="block font-semibold">{selectedProfile ? `Profile: ${profileLabel(selectedProfile)}` : "No profiles yet"}</span>
-            {windowLabel(feedWindow)} / {sortOptions.find((option) => option.value === sort)?.label}
-          </p>
+          {dismissedCount > 0 ? <button className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#fff8e8]/15 text-sm font-semibold text-[#f8df9d] hover:bg-[#fff8e8]/10 lg:col-span-1" disabled={pending} onClick={onRestoreCleared} type="button"><Undo2 className="h-4 w-4" />Restore cleared</button> : null}
 
           {sourceFilter ? (
-            <div className="col-span-3 rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3 lg:col-span-1">
+            <div className="col-span-2 rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3 lg:col-span-1">
               <div className="text-xs font-bold uppercase tracking-[0.12em] text-[#b8af9d]">Source filter</div>
               <div className="mt-1 text-sm font-black text-[#fff8e8] [overflow-wrap:anywhere]">{sourceFilter.name}</div>
               <button className="mt-1 inline-flex min-h-11 items-center text-sm font-black text-[#f8df9d] underline underline-offset-4" onClick={onClearSourceFilter} type="button">
@@ -941,12 +932,11 @@ function ControlPanel({
   );
 }
 
-function DeskStat({ children, label, value }: { children?: ReactNode; label: string; value: number }) {
+function DeskStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-0 bg-[#1d1a16] px-1 py-4 sm:px-3">
-      <div className="font-serif text-3xl font-black leading-none text-[#f8df9d]">{value}</div>
-      <div className="mt-1 text-xs font-bold uppercase tracking-[0.04em] text-[#b8af9d] sm:text-[0.65rem] sm:tracking-[0.22em]">{label}</div>
-      {children}
+    <div className="min-w-0 bg-[#1d1a16] px-1 py-3 lg:px-3 lg:py-4">
+      <div className="font-serif text-2xl font-bold leading-none text-[#f8df9d] lg:text-3xl">{value}</div>
+      <div className="mt-1 text-xs font-medium capitalize text-[#b8af9d] lg:uppercase lg:tracking-wider">{label}</div>
     </div>
   );
 }

@@ -97,6 +97,22 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     return card(page, id).boundingBox();
   }
 
+  await t.test("mobile controls use a full-width profile and readable window/order row", async () => {
+    const { page } = await setup(true);
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const profile = await page.locator('#profile-select').boundingBox();
+      const window = await page.locator('#window-select').boundingBox();
+      const sort = await page.locator('#sort-select').boundingBox();
+      assert.ok(profile.width > window.width * 1.8);
+      assert.equal(window.y, sort.y);
+      assert.ok(window.y > profile.y);
+      assert.equal(await page.getByLabel('Current feed selection').count(), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/compact-panel-${width}.png` });
+    }
+  });
+
   await t.test("fixed mouse position advances three cards before acknowledgement; Undo waits for the last save", async () => {
     const { page, state } = await setup();
     const top = await position(page);
@@ -120,7 +136,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     }
     assert.equal(state.acknowledgements, 0);
     assert.equal(state.calls.length, 1);
-    assert.equal(await page.getByRole("button", { name: "Restore", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Restore cleared", exact: true }).isDisabled(), true);
     await page.keyboard.press("z");
     assert.equal(state.calls.length, 1);
     await idle(page);
