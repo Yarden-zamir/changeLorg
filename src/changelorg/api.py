@@ -178,7 +178,11 @@ def create_app() -> FastAPI:
                     headers={"Cache-Control": "private, no-store"},
                 )
         response = await call_next(request)
-        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable"
+            if request.url.path.startswith("/assets/") and response.status_code == 200
+            else "private, no-store"
+        )
         return response
 
     @app.exception_handler(KeyError)

@@ -375,7 +375,7 @@ def test_proxy_token_and_github_numeric_id_define_stable_identity(
             == anonymous["X-Changelorg-Owner"]
         )
     assert requests.count("http://oauth2-proxy:4180/auth/auth") == 4
-    assert requests.count("https://api.github.com/user") == 4
+    assert requests.count("https://api.github.com/user") == 2
     assert mocked.is_closed
 
 

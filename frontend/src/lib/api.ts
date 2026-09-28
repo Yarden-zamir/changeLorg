@@ -3,10 +3,14 @@ export const anonymousTokenKey = "changelorg:anonymous-token:v1";
 export const identityInvalidatedEvent = "changelorg:identity-invalidated";
 let identityRequest = 0;
 let access: { owner: string; token: string; authenticated: boolean } | null = null;
+const reads = new Map<string, { expires: number; value: unknown }>();
+let readGeneration = 0;
+export function clearReadCache() { reads.clear(); readGeneration++; }
 
 export function invalidateIdentity() {
   identityRequest++;
   access = null;
+  clearReadCache();
 }
 
 export class ApiError extends Error {
@@ -69,6 +73,12 @@ export async function api<T>(path: string, options: { owner: string | null; meth
     throw new ApiError("Your account changed. Reload before you retry. No request was sent.", 412);
   }
   const headers: Record<string, string> = { "X-Anonymous-Token": token, Accept: "application/json" };
+  const cacheable = method === "GET" && Boolean(options.owner) && ["/changes", "/profiles", "/sources", "/plugins", "/catalog"].includes(path.split("?")[0]);
+  const cacheKey = `${options.owner}:${token}:${path}`;
+  if (method !== "GET") clearReadCache();
+  const generation = readGeneration;
+  const cached = cacheable ? reads.get(cacheKey) : undefined;
+  if (cached && cached.expires > Date.now() && !options.signal?.aborted) return structuredClone(cached.value) as T;
   // The server must compare this owner with the request identity before it accesses account data.
   if (options.owner) headers["X-Changelorg-Owner"] = options.owner;
   if (method !== "GET") headers["X-Changelorg-Request"] = "1";
@@ -82,9 +92,11 @@ export async function api<T>(path: string, options: { owner: string | null; meth
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
+    if (method !== "GET") clearReadCache();
     if (timeout.aborted) throw new ApiError("The request timed out. Reload to check the server state before you retry a save.");
     throw new ApiError("Cannot reach the server. Check your connection, then retry or reload to check the server state.");
   }
+  if (method !== "GET") clearReadCache();
   if (options.owner && (access !== expected || localStorage.getItem(anonymousTokenKey) !== token)) {
     throw new ApiError("Your account changed. The response from the previous account was discarded.", 412);
   }
@@ -116,6 +128,10 @@ export async function api<T>(path: string, options: { owner: string | null; meth
   if (options.owner && (access !== expected || localStorage.getItem(anonymousTokenKey) !== token)) {
     throw new ApiError("Your account changed. The response from the previous account was discarded.", 412);
   }
+  if (cacheable && generation === readGeneration && !options.signal?.aborted) {
+    if (reads.size >= 32) reads.delete(reads.keys().next().value!);
+    reads.set(cacheKey, { expires: Date.now() + 15_000, value: structuredClone(value) });
+  }
   return value;
 }
 
@@ -143,11 +159,12 @@ export async function getIdentity() {
       throw new ApiError("The server returned an invalid identity. Access is blocked until it returns a valid identity.");
     }
     if (access?.owner !== value.id || access.token !== token || access.authenticated !== value.authenticated) {
+      clearReadCache();
       access = { owner: value.id, token, authenticated: value.authenticated };
     }
     return value as Identity;
   } catch (cause) {
-    if (ticket === identityRequest) access = null;
+    if (ticket === identityRequest) { access = null; clearReadCache(); }
     throw cause;
   }
 }

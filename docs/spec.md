@@ -307,6 +307,9 @@ Behavior:
 - Mutation bodies have a 2 MiB limit, including requests without `Content-Length`.
 - CORS uses an explicit origin allowlist, credentials, and all three custom headers from the frontend contract. Wildcard origins are forbidden.
 - Private responses use `Cache-Control: private, no-store`.
+- Versioned frontend assets under `/assets/` use public immutable caching for one year; HTML and private API responses remain uncached by HTTP caches.
+- The browser keeps up to 32 account/token/path-scoped read results in memory for 15 seconds. Writes, account changes, and explicit reloads invalidate them; late pre-invalidation reads cannot refill the cache.
+- GitHub identity lookup results are cached in process for 60 seconds by a token digest, up to 256 entries. Cookie validation still runs on every request; `/me` always revalidates with GitHub.
 - Public request handlers always pass the resolved owner to store and service calls. They never use a global default or `owner_id=None`.
 - Only internal scheduled refreshes can use the all-owner scope. Each write still uses the source owner.
 - Manual refresh and optional generation fetch enabled sources for the current owner and return changes, errors, and the window.
@@ -370,7 +373,7 @@ Behavior:
 - Resolves `/me` before account data and preserves the anonymous capability across sign-in, sign-out, and imports.
 - Offers GitHub sign-in when authentication is enabled. All GitHub users can sign in.
 - The account-error screen offers explicit cookie reset without loss of anonymous data, including when authentication is disabled.
-- After sign-in, prompts for an explicit anonymous-data copy when anonymous data exists. It never imports automatically.
+- Account details, sign-in/out, anonymous import, and legacy browser-state import live inside a top-right GitHub icon menu. Imports remain explicit; no automatic import prompt appears on the main view.
 - Treats URL query parameters as the source of truth for visible feed selections.
 - Writes selected profile, time window, sort order, and source filter to the URL immediately.
 - Reads those query parameters on page load and browser back/forward navigation.
@@ -407,11 +410,12 @@ Behavior:
 - The control panel offers Restore when loaded dismissed entries exist. Restore covers only the loaded profile, window, and active source filter, up to 200 items.
 - Without a source filter, Restore covers loaded dismissed entries across the profile. It preserves notes and shelf flags; it never restores unloaded entries.
 - The note control is an arrow that expands a text box on the card. Saving a note from the desk shelves the entry. Cmd/Ctrl+Enter saves, Escape closes.
-- Empty queues use one-line messages in the existing queue headers, without a duplicate empty-desk panel.
+- An empty shelf shows only its compact header. An empty desk uses a one-line message in its header, without a duplicate panel.
 - The desk header distinguishes feed load in progress, load error, no active sources, items on the shelf, cleared items, and no unread items.
 - Empty-desk guidance points to source management, restore, or the existing Window control as appropriate. Account setup remains separate.
 - Below the large breakpoint, the control panel has a compact stats strip, a full-width profile selector, and a two-column window/order row. Dropdown labels omit redundant counts and captions.
-- Restore cleared is a separate full-width action. No repeated selection summary appears. Source filter names wrap.
+- Clicking Sources opens the source/profile editor. Clicking Cleared opens the loaded cleared-item list with individual restore and restore-all controls. Restore is absent from the main view.
+- The main header contains the title and GitHub menu, without a subtitle or account explanation. Populated queue headers omit repeated explanatory text. Source filter names wrap.
 - At 320px and wider, long card titles, source names, notes, and account names wrap without page-level horizontal overflow.
 - Mobile card actions and editor confirmation buttons have at least 44px height. Source metadata uses at least 14px text.
 - The mobile editor action bar uses two columns and scrolls within 40% of viewport height on short screens.

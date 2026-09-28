@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -66,20 +67,32 @@ def request_identity(request: Request) -> Identity:
                 raise HTTPException(
                     503, "Authentication service did not provide an identity token"
                 )
-            # Use the authenticated endpoint, not a username lookup. GitHub usernames can change owners.
-            github = client.get(
-                "https://api.github.com/user",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-            )
-            if github.status_code == 401:
-                raise HTTPException(401, "GitHub session expired; sign in again")
-            if github.status_code != 200:
-                raise HTTPException(503, "GitHub identity service unavailable")
-            user = GitHubUser.model_validate(github.json())
+            # The proxy still validates every cookie. Cache only the token's verified identity.
+            cache = getattr(request.app.state, "github_identity_cache", None)
+            if cache is None:
+                cache = {}
+                request.app.state.github_identity_cache = cache
+            key = (id(client), hashlib.sha256(token.encode()).hexdigest())
+            cached = cache.get(key)
+            if request.url.path != "/me" and cached and cached[0] > time.monotonic():
+                user = cached[1]
+            else:
+                github = client.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28",
+                    },
+                )
+                if github.status_code == 401:
+                    raise HTTPException(401, "GitHub session expired; sign in again")
+                if github.status_code != 200:
+                    raise HTTPException(503, "GitHub identity service unavailable")
+                user = GitHubUser.model_validate(github.json())
+                if len(cache) >= 256:
+                    cache.clear()
+                cache[key] = (time.monotonic() + 60, user)
         except (httpx.HTTPError, ValidationError, ValueError):
             raise HTTPException(503, "Could not verify GitHub identity") from None
         owner, login = f"github:{user.id}", user.login

@@ -7,7 +7,7 @@ The editor rules define approved behavior, not proof of tests or deployment. The
 ## Account Access
 
 1. Except for session reset, every API request includes `X-Anonymous-Token` with a persistent UUIDv4 from browser `localStorage`.
-2. Every API request includes cookies through `credentials: "include"` and bypasses the browser cache.
+2. Every network API request includes cookies through `credentials: "include"` and bypasses the HTTP browser cache. Successful profiles, sources, plugins, catalog, and changes reads have a bounded 15-second in-memory cache keyed by owner, browser token, and exact path. Writes invalidate it before and after requests, and account changes or explicit reloads clear it. Entries never persist to browser storage.
 3. `GET /me` resolves the current owner before the frontend accesses account data.
 4. Except for session reset, every subsequent API request includes `X-Changelorg-Owner` with the exact `id` from `/me`.
 5. Every `POST`, `PATCH`, and `DELETE` includes `X-Changelorg-Request: 1`.
@@ -218,7 +218,7 @@ The general request-body limit and authentication-service failures still apply.
 19. Anonymous import requires confirmation and a signed-in owner. It copies data without removal of anonymous data or the token.
 20. The existing browser-state import remains explicit and optional. It never replaces server state during normal feed loads.
 21. Imports are idempotent. Existing destination state takes precedence, and browser-state import only matches sources that belong to the destination owner.
-22. Dismissal hides the anonymous import prompt, not the action. Authenticated accounts with anonymous data retain an unobtrusive `Import anonymous data` control.
+22. Import actions are inside the GitHub account menu. Anonymous import remains available when the account has anonymous data; there is no automatic import prompt on the main view.
 
 Browser-state import keys retain the existing format: `source_id:external_id`, with URL and then title as fallbacks.
 
@@ -246,6 +246,8 @@ Account changes discard these local edits. They do not replace durable server st
 16. If fetched items fall outside the current window, offer the existing Window control for an explicit wider selection. Never widen it automatically.
 17. Empty-desk status uses a one-line message in the existing queue header, not a duplicate panel. It distinguishes load progress, error, no active sources, shelved items, cleared items, and no unread items.
 18. Empty-desk guidance uses source management, restore, or the existing Window control. Account setup remains separate from the empty queue message.
+
+The header exposes account/import actions through the GitHub icon menu. The Sources count opens the editor, and Cleared opens the scoped cleared-item list with individual and batch restore controls. An empty shelf uses only its compact header.
 
 ## Discard Boundaries
 

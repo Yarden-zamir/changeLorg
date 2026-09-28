@@ -5,7 +5,7 @@ import { ChangeCard } from "./components/ChangeCard";
 import { AccountArea } from "./components/AccountArea";
 import { SourceEditor } from "./components/SourceEditor";
 import { Badge } from "./components/ui/badge";
-import { anonymousTokenKey, api, ApiError, errorMessage, getIdentity, identityInvalidatedEvent, invalidateIdentity, resetSession, type Identity, type Profile } from "./lib/api";
+import { anonymousTokenKey, api, ApiError, clearReadCache, errorMessage, getIdentity, identityInvalidatedEvent, invalidateIdentity, resetSession, type Identity, type Profile } from "./lib/api";
 import { changeKey, dateValue, openChange, type CardLocation, type Change, type ViewChange } from "./lib/changes";
 
 type UserChangeState = {
@@ -197,6 +197,7 @@ export default function App() {
   async function reload(force = true) {
     if (resetLock.current) return;
     if (force) refreshProfiles.current = true;
+    if (force) clearReadCache();
     const ticket = ++request.current;
     let profileTicket: number | null = null;
     try {
@@ -337,6 +338,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
   const scrollAnchor = useRef<ScrollAnchor | null>(null);
   const scrollOnFocus = useRef(false);
   const shortcutDialog = useRef<HTMLDialogElement>(null);
+  const clearedDialog = useRef<HTMLDialogElement>(null);
   const mutationLock = useRef(false);
   const writes = useRef<FeedWrite[]>([]);
   const writeController = useRef<AbortController | null>(null);
@@ -619,6 +621,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
         return;
       }
       if (document.querySelector("dialog[open]") && !shortcutDialog.current?.open) return;
+      if (document.querySelector(".account-area details[open]")) return;
       if (event.key === "?") {
         event.preventDefault();
         if (!event.repeat) {
@@ -718,11 +721,11 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
         <ControlPanel
           queueCount={deskChanges.length}
           dismissedCount={dismissedCount}
-          pending={pending || isLoading || needsReload.current}
           feedWindow={feedWindow}
           onClearSourceFilter={() => updateUrlState({ sourceId: null, sourceName: null })}
           onFeedWindowChange={(nextFeedWindow) => updateUrlState({ feedWindow: nextFeedWindow })}
-          onRestoreCleared={onRestoreCleared}
+          onShowCleared={() => clearedDialog.current?.showModal()}
+          onEdit={onEdit}
           onSortChange={(nextSort) => updateUrlState({ sort: nextSort })}
           onProfileChange={(profile) => {
             updateUrlState({ profile, sourceId: null, sourceName: null });
@@ -736,7 +739,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
         />
 
         <div className="flex min-w-0 flex-col gap-5">
-          {error ? <div><ErrorNote message={error} /><button className="editor-button mt-2" disabled={pending} onClick={() => setRetry((value) => value + 1)}>Reload desk from server</button></div> : null}
+          {error ? <div><ErrorNote message={error} /><button className="editor-button mt-2" disabled={pending} onClick={() => { clearReadCache(); setRetry((value) => value + 1); }}>Reload desk from server</button></div> : null}
           {pending ? <p role="status" className="sr-only">Save in progress...</p> : null}
           {!isLoading && sourceCount === 0 ? <section className="rounded-[2rem] border border-stone-950 bg-[#fffaf0] p-6">
             <h2 className="font-serif text-3xl font-black">Build your edition</h2>
@@ -793,6 +796,12 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
       </section>
 
       {lastAction ? <UndoToast label={lastAction.label} pending={pending || isLoading || needsReload.current} onUndo={onUndo} /> : null}
+      <dialog ref={clearedDialog} aria-labelledby="cleared-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-xl overflow-auto rounded-2xl bg-[#fffaf0] p-5 shadow-xl backdrop:bg-stone-950/50">
+        <div className="flex items-center justify-between gap-3"><h2 id="cleared-title" className="font-serif text-2xl font-bold">Cleared items</h2><button className="editor-button" onClick={() => clearedDialog.current?.close()}>Close</button></div>
+        <p className="my-3 text-sm text-stone-600">Current profile, window, and source filter.</p>
+        {dismissedCount ? <button className="editor-button mb-3" disabled={pending || isLoading || needsReload.current} onClick={onRestoreCleared}>Restore all shown</button> : <p className="py-4 text-sm">No cleared items in this view.</p>}
+        {viewChanges.filter((change) => change.dismissed).map((change) => <div key={change.id} className="flex items-start justify-between gap-3 border-t border-stone-950/15 py-3"><div className="min-w-0 [overflow-wrap:anywhere]"><p className="font-semibold">{change.title}</p><p className="text-sm text-stone-600">{change.source_name}</p></div><button className="editor-button shrink-0" disabled={pending || isLoading || needsReload.current} onClick={() => void updateChangeState(change, { dismissed: false }, "Restored item")}>Restore</button></div>)}
+      </dialog>
       <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] p-4 text-stone-950 shadow-xl backdrop:bg-stone-950/50 sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 id="shortcut-title" className="font-serif text-2xl font-black">Keyboard shortcuts</h2>
@@ -805,20 +814,19 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
   );
 }
 
-function QueueHeader({ children, count, icon, swipeHint, title, tone }: { children: ReactNode; count: number; icon: ReactNode; swipeHint: string; title: string; tone: "shelf" | "desk" }) {
+function QueueHeader({ children, count, icon, title, tone }: { children: ReactNode; count: number; icon: ReactNode; swipeHint: string; title: string; tone: "shelf" | "desk" }) {
   const muted = tone === "shelf" ? "text-amber-950/65" : "text-stone-500";
   const body = tone === "shelf" ? "text-amber-950/80" : "text-stone-600";
   return (
-    <div className={`flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between ${tone === "shelf" ? "border-amber-950/20" : "border-stone-950/15"}`}>
+    <div className={`flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${count ? "border-b pb-4" : ""} ${tone === "shelf" ? "border-amber-950/20" : "border-stone-950/15"}`}>
       <div>
         <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] ${muted}`}>
           {icon}
           {title}
           <Badge className={tone === "shelf" ? "border-amber-950/20 bg-amber-950 text-amber-50" : "border-stone-950/20 bg-stone-950 text-[#fff8e8]"}>{count}</Badge>
         </div>
-        <p className={`mt-2 hidden text-xs font-semibold pointer-coarse:block ${body}`}>{swipeHint}</p>
       </div>
-      <p className={`min-w-0 max-w-md text-sm leading-6 [overflow-wrap:anywhere] ${body}`}>{children}</p>
+      {count === 0 && tone === "desk" ? <p className={`min-w-0 max-w-md text-sm leading-6 [overflow-wrap:anywhere] ${body}`}>{children}</p> : null}
     </div>
   );
 }
@@ -826,12 +834,12 @@ function QueueHeader({ children, count, icon, swipeHint, title, tone }: { childr
 function ControlPanel({
   queueCount,
   dismissedCount,
-  pending,
   feedWindow,
   onClearSourceFilter,
   onFeedWindowChange,
   onProfileChange,
-  onRestoreCleared,
+  onShowCleared,
+  onEdit,
   onSortChange,
   profiles,
   savedCount,
@@ -842,12 +850,12 @@ function ControlPanel({
 }: {
   queueCount: number;
   dismissedCount: number;
-  pending: boolean;
   feedWindow: FeedWindow;
   onClearSourceFilter: () => void;
   onFeedWindowChange: (value: FeedWindow) => void;
   onProfileChange: (value: ProfileName) => void;
-  onRestoreCleared: () => void;
+  onShowCleared: () => void;
+  onEdit: () => void;
   onSortChange: (value: SortKey) => void;
   profiles: Profile[];
   savedCount: number;
@@ -860,15 +868,12 @@ function ControlPanel({
   return (
     <aside className="lg:sticky lg:top-5 lg:self-start">
       <div className="overflow-hidden rounded-2xl border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-sm lg:rounded-[2rem] lg:shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
-        <div className="hidden border-b border-[#fff8e8]/15 p-5 sm:p-6 lg:block">
-          <Badge className="border-[#d7b56d]/40 bg-[#d7b56d]/15 text-[#f8df9d]">Personal changelog desk</Badge>
-        </div>
 
         <div className="grid grid-cols-4 border-b border-[#fff8e8]/15 px-2 text-center lg:grid-cols-2 lg:gap-px lg:bg-[#fff8e8]/15 lg:px-0">
           <DeskStat label="desk" value={queueCount} />
           <DeskStat label="shelf" value={savedCount} />
-          <DeskStat label="sources" value={sourceCount} />
-          <DeskStat label="cleared" value={dismissedCount} />
+          <DeskStat label="sources" value={sourceCount} onClick={onEdit} />
+          <DeskStat label="cleared" value={dismissedCount} onClick={onShowCleared} />
         </div>
 
         <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-1 lg:gap-4 lg:p-6">
@@ -915,7 +920,6 @@ function ControlPanel({
             </select>
           </label>
 
-          {dismissedCount > 0 ? <button className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#fff8e8]/15 text-sm font-semibold text-[#f8df9d] hover:bg-[#fff8e8]/10 lg:col-span-1" disabled={pending} onClick={onRestoreCleared} type="button"><Undo2 className="h-4 w-4" />Restore cleared</button> : null}
 
           {sourceFilter ? (
             <div className="col-span-2 rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3 lg:col-span-1">
@@ -932,13 +936,13 @@ function ControlPanel({
   );
 }
 
-function DeskStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-0 bg-[#1d1a16] px-1 py-3 lg:px-3 lg:py-4">
+function DeskStat({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
+  const content = <>
       <div className="font-serif text-2xl font-bold leading-none text-[#f8df9d] lg:text-3xl">{value}</div>
-      <div className="mt-1 text-xs font-medium capitalize text-[#b8af9d] lg:uppercase lg:tracking-wider">{label}</div>
-    </div>
-  );
+      <div className={`mt-1 text-xs font-medium capitalize text-[#b8af9d] lg:uppercase lg:tracking-wider ${onClick ? "underline decoration-[#b8af9d]/40 underline-offset-4" : ""}`}>{label}</div>
+    </>;
+  const classes = "min-w-0 bg-[#1d1a16] px-1 py-3 lg:px-3 lg:py-4";
+  return onClick ? <button type="button" className={`${classes} hover:bg-[#292520]`} onClick={onClick} aria-label={label === "sources" ? "Manage sources and profiles" : "View cleared items"}>{content}</button> : <div className={classes}>{content}</div>;
 }
 
 function ErrorNote({ message }: { message: string }) {

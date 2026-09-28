@@ -143,8 +143,7 @@ This migration is irreversible without an external copy. A SQLite-only release c
 
 ## Explicit Imports
 
-- After sign-in, the frontend prompts for anonymous import if `/me` reports anonymous data.
-- After prompt dismissal or a previous import, an account control still permits explicit anonymous import.
+- Anonymous and legacy browser-state imports are available inside the GitHub account menu. No import prompt appears on the main view; all imports still require explicit confirmation.
 - `POST /me/import` requires user confirmation and a signed-in GitHub destination owner.
 - The backend copies anonymous profiles, sources, changes, and state into that account, including empty profiles.
 - Import leaves anonymous data and the browser token intact. It is a copy, not an owner reassignment.

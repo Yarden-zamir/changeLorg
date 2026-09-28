@@ -32,6 +32,25 @@ test("requires /me before account requests and never sends an unbound mutation",
   assert.equal(fetch.mock.callCount(), 0);
 });
 
+test("read cache avoids repeat fetches, clones data, expires, and invalidates on writes", async (t) => {
+  await identify(t);
+  let now = 1000;
+  t.mock.method(Date, "now", () => now);
+  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json([{ name: "Work" }]));
+  const first = await api("/profiles", { owner: identity.id });
+  first[0].name = "local edit";
+  assert.equal((await api("/profiles", { owner: identity.id }))[0].name, "Work");
+  assert.equal(fetch.mock.callCount(), 1);
+  now += 16000;
+  await api("/profiles", { owner: identity.id });
+  assert.equal(fetch.mock.callCount(), 2);
+  await api("/changes/1", { owner: identity.id, method: "PATCH", body: { dismissed: true } });
+  await api("/profiles", { owner: identity.id });
+  assert.equal(fetch.mock.callCount(), 4);
+  invalidateIdentity();
+  await assert.rejects(api("/profiles", { owner: identity.id }), ApiError);
+});
+
 test("session reset uses same-origin cookies and CSRF without identity or browser storage", async (t) => {
   t.mock.method(localStorage, "getItem", () => { throw new Error("storage unavailable"); });
   t.mock.method(localStorage, "setItem", () => { throw new Error("must not write browser data"); });

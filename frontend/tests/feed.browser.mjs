@@ -65,6 +65,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
       if (url.pathname === "/me") return send({ id: state.owner, authenticated: true, login: "tester", auth_enabled: true, anonymous_has_data: false });
       assert.equal(request.headers()["x-changelorg-owner"], state.owner);
       if (url.pathname === "/profiles") return send([{ name: "Work", source_count: 2 }, { name: "Other", source_count: 1 }]);
+      if (["/sources", "/plugins", "/catalog"].includes(url.pathname) && method === "GET") return send([]);
       if (url.pathname === "/changes" && method === "GET") {
         state.reads++;
         return send(state.changes.filter((item) => item.source_profile === url.searchParams.get("profile") &&
@@ -113,6 +114,22 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     }
   });
 
+  await t.test("account actions stay in the GitHub menu and count buttons open management views", async () => {
+    const { page } = await setup(true);
+    assert.equal(await page.getByText("Your personal change newspaper", { exact: true }).count(), 0);
+    assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), false);
+    await page.getByLabel("GitHub account menu").click();
+    assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), true);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), false);
+    await page.getByRole("button", { name: "Manage sources and profiles" }).click();
+    await page.getByRole("dialog", { name: "Sources & profiles" }).waitFor();
+    await page.getByRole("dialog", { name: "Sources & profiles" }).getByRole("button", { name: "Close", exact: true }).click();
+    await page.getByRole("button", { name: "View cleared items" }).click();
+    await page.getByText("No cleared items in this view.", { exact: true }).waitFor();
+    await page.getByRole("dialog", { name: "Cleared items" }).getByRole("button", { name: "Close", exact: true }).click();
+  });
+
   await t.test("fixed mouse position advances three cards before acknowledgement; Undo waits for the last save", async () => {
     const { page, state } = await setup();
     const top = await position(page);
@@ -136,7 +153,9 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     }
     assert.equal(state.acknowledgements, 0);
     assert.equal(state.calls.length, 1);
-    assert.equal(await page.getByRole("button", { name: "Restore cleared", exact: true }).isDisabled(), true);
+    await page.getByRole("button", { name: "View cleared items", exact: true }).click();
+    assert.equal(await page.getByRole("button", { name: "Restore all shown", exact: true }).isDisabled(), true);
+    await page.getByRole("dialog", { name: "Cleared items" }).getByRole("button", { name: "Close", exact: true }).click();
     await page.keyboard.press("z");
     assert.equal(state.calls.length, 1);
     await idle(page);
@@ -243,6 +262,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     await card(page, 8).getByRole("button", { name: "Source 1", exact: true }).click();
     assert.equal(await card(page, 1).count(), 0);
     state.changes[7].note = "New server baseline";
+    await idle(page);
     await card(page, 8).waitFor();
     assert.equal(await card(page, 8).getByRole("textbox").inputValue(), "Saved baseline");
     assert.equal(await card(page, 1).count(), 0);
