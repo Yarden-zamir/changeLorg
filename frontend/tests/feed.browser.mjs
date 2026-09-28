@@ -122,7 +122,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     assert.equal(await page.getByText("Your personal change newspaper", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), false);
     await page.getByLabel("GitHub account menu").click();
-    assert.deepEqual(await page.evaluate(() => window.haptics), [10]);
+    assert.deepEqual(await page.evaluate(() => window.haptics), [25]);
     assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), true);
     await page.keyboard.press("Escape");
     assert.equal(await page.getByRole("link", { name: "Sign out" }).isVisible(), false);
@@ -172,6 +172,32 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     assert.equal(await card(page, 1).count(), 0);
     assert.equal(await card(page, 3).count(), 1);
     t.diagnostic(`Desktop, 1500 ms PATCH delay: ${JSON.stringify(metrics)}; maximum active PATCH requests: ${state.maxActive}`);
+  });
+
+  await t.test("native switch fallback toggles once without the Vibration API", async () => {
+    const { page } = await setup(true);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'vibrate', { configurable: true, value: undefined });
+      Object.defineProperty(HTMLInputElement.prototype, 'switch', { configurable: true, value: false });
+    });
+    await page.getByLabel("GitHub account menu").click();
+    assert.equal(await page.locator('label[aria-hidden=true] input[switch]').count(), 1);
+    assert.equal(await page.locator('input[switch]').isChecked(), true);
+    await delay(100);
+    await page.getByLabel("GitHub account menu").click();
+    assert.equal(await page.locator('input[switch]').isChecked(), false);
+    assert.equal(await page.locator('input[switch]').isVisible(), false);
+    await page.getByRole("button", { name: "View cleared items" }).click();
+    await delay(100);
+    await page.getByRole("dialog", { name: "Cleared items" }).getByRole("button", { name: "Close" }).focus();
+    await page.evaluate(() => {
+      // Trigger a harmless control inside the open modal to check fallback placement.
+      const button = document.createElement('button');
+      document.querySelector('dialog[open]').appendChild(button);
+      button.click();
+      button.remove();
+    });
+    assert.equal(await page.locator('dialog[open] input[switch]').count(), 1);
   });
 
   for (const failAt of [1, 2]) await t.test(`failure ${failAt} rolls back only failed and unsent jobs; reload never replays`, async () => {

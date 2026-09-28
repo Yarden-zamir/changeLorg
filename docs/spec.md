@@ -419,7 +419,7 @@ Behavior:
 - At 320px and wider, long card titles, source names, notes, and account names wrap without page-level horizontal overflow.
 - Mobile card actions and editor confirmation buttons have at least 44px height. Source metadata uses at least 14px text.
 - Mobile page and queue gutters are 4px; card body padding is 12px and nested article padding is 8px to preserve reading width. Larger layouts keep their existing spacing.
-- Supported browsers provide a best-effort 10ms vibration on button/link/menu actions, selection changes, and committed swipes. Feedback is throttled to one pulse per 80ms; typing and scrolling do not vibrate. Unsupported or blocked vibration does not affect the action.
+- Supported browsers provide a best-effort 25ms vibration on button/link/menu actions, selection changes, and committed swipes. When vibration is unavailable or rejected, browsers exposing native switch controls use a switch-toggle haptic fallback. Feedback is throttled to one pulse per 80ms; typing and scrolling do not vibrate. Device settings can still suppress feedback, without affecting the action.
 - The mobile editor action bar uses two columns and scrolls within 40% of viewport height on short screens.
 - The backend persists dismissed, saved, and note state for the current owner.
 - Anonymous browser `localStorage` holds a UUIDv4 bearer capability, not the authoritative change state.
