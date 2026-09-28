@@ -8,6 +8,12 @@ const { outputText } = ts.transpileModule(source, { compilerOptions: { target: t
 const { draftSignature, fetchSignature, normalizedSource, toDraft } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 const rss = { name: "Example", enabled: true, plugin: "rss-atom", config: { url: "https://example.com/feed", profile: "Work", include_any: ["release"], custom: { nested: [1, 2] } } };
 
+test("X drafts retain filters but remove incompatible enrichment and HTML options", () => {
+  const draft = toDraft({ name: "@example", enabled: true, plugin: "x", config: { url: "https://x.com/example", profile: "Work", include_any: ["release"], enrichment_profile: "release-notes", user_agent: "custom", article_path_prefix: "/news", limit: 10 } });
+  assert.deepEqual(normalizedSource(draft).config, { url: "https://x.com/example", profile: "Work", include_any: ["release"], exclude_any: [] });
+  assert.notEqual(fetchSignature(draft), fetchSignature({ ...draft, exclude: "repost" }));
+});
+
 test("fetch identity excludes subscription metadata but includes every fetch setting", () => {
   const draft = toDraft(rss);
   const signature = fetchSignature(draft);

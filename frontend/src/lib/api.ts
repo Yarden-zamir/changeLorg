@@ -112,6 +112,7 @@ export async function api<T>(path: string, options: { owner: string | null; meth
       409: "This request conflicts with existing data or your account changed. Reload the page and check your account and names.",
       412: "Your account changed. Reload the page before you retry. No changes were applied.",
       422: "The server rejected these values. Check the URL, profile, plugin, and other fields.",
+      424: "X's keyless public timeline is currently unavailable or rate-limited. Try later, or follow an RSS feed from a provider you trust.",
       429: "Too many requests. Wait before you retry.",
       502: "The source did not return a usable response. Check its URL or try again later.",
     };

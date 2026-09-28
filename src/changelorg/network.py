@@ -122,17 +122,23 @@ def validate_public_url(
 
 def validate_source_config(source: SourceCreate) -> None:
     """Validate web source config without network access. Trusted local plugins do not use this entry point."""
-    if source.plugin not in {"rss-atom", "html-news"}:
+    if source.plugin not in {"rss-atom", "html-news", "x"}:
         raise PublicFetchError("Only built-in source plugins are available")
     config = source.config
     validate_public_url(config.get("url"))
+    if source.plugin == "x":
+        from changelorg.social import x_username
+
+        x_username(validate_public_url(config.get("url")))
     string_keys = {"url", "profile", "user_agent", "enrichment_profile"}
     list_keys = (
         {"include_any", "exclude_any"}
-        if source.plugin == "rss-atom"
+        if source.plugin in {"rss-atom", "x"}
         else {"exclude_path_prefixes", "title_suffixes"}
     )
     allowed_keys = string_keys | list_keys
+    if source.plugin == "x":
+        allowed_keys -= {"enrichment_profile", "user_agent"}
     if source.plugin == "html-news":
         string_keys.add("article_path_prefix")
         allowed_keys |= {"article_path_prefix", "limit"}

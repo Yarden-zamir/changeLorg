@@ -4,6 +4,8 @@ This repository is a KitSHn recipe for deploying changelorg to `changelorg.yarde
 
 ## Runtime
 
+X and Bluesky source handlers require no keys or new recipe settings. X uses its public embedded timeline on a best-effort basis; blocked or rate-limited responses remain visible errors. It does not use an authenticated API, login cookies, or third-party scraping credentials.
+
 - FastAPI serves the API and the built Vite frontend from one container.
 - Embedded DuckDB 1.5.5 uses `/data/changelorg.duckdb` inside the app container.
 - `${KITSHN_DATA_DIR}/data` persists that database on the VPS. There is no database service.

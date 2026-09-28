@@ -95,7 +95,7 @@ Behavior:
 
 ### Loading
 
-Web requests use only the built-in `rss-atom` and `html-news` plugins. The web API accepts no arbitrary plugin uploads.
+Web requests use only the built-in `rss-atom`, `html-news`, and `x` plugins. The web API accepts no arbitrary plugin uploads.
 Web requests never load local plugins or accept local overrides of built-in plugins.
 
 The trusted CLI loads built-in plugins first, then local plugins from:
@@ -440,6 +440,14 @@ Query parameters:
 - `source`: Optional numeric source ID filter.
 - `sourceName`: Optional display name for the active source filter.
 
+## Social Sources
+
+- X/Twitter profile URLs and individual post URLs select the account timeline using `plugin: x`. Discovery is structural; preview verifies availability.
+- X uses the public `syndication.twitter.com` embedded timeline without API keys, bearer tokens, or login cookies. It parses embedded JSON as data and executes no page scripts.
+- One public timeline response supplies at most 200 entries, under the existing public fetch deadline, redirect, DNS, and byte limits. Each post becomes one card with stable `x:<post-id>` identity, creation time, escaped content, and a link to the post. Include/exclude filters remain available.
+- X coverage is best-effort and may be incomplete or unavailable. Lists, searches, and private accounts are unsupported. Blocked/rate-limited pages and missing/malformed timeline data return `424` for preview, never a fabricated empty timeline. No authenticated or third-party fallback is attempted.
+- Bluesky profile and post URLs select the account's public RSS feed. Untitled entries use post text for their card titles. Public feed availability and platform limits still apply.
+
 ## Deployment and Retention
 
 - Embedded DuckDB 1.5.5 uses native `JSON`, `TIMESTAMPTZ`, and `BOOLEAN` columns, with sequences for source and change IDs.
@@ -458,5 +466,5 @@ Query parameters:
 - Automatic data expiry or automatic account imports.
 - Arbitrary web plugin uploads.
 - Google sign-in. The separate Google sign-in proposal is superseded by the GitHub account contract.
-- Twitter/X support.
+- Private social accounts, X lists/search, and complete historical social timelines.
 - A dedicated GitHub releases API plugin. Public release feeds can use RSS/Atom.

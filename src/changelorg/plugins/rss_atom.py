@@ -4,7 +4,7 @@ import calendar
 from datetime import datetime, timezone
 from typing import Any
 
-from changelorg.enrichment import PROFILES, enrich_change, profile_for
+from changelorg.enrichment import PROFILES, enrich_change, plain_text, profile_for
 from changelorg.feeds import fetch_feed
 from changelorg.models import ChangeInput, Source, TimeWindow
 from changelorg.network import (
@@ -135,6 +135,8 @@ class RssAtomPlugin:
             link = _entry_link(entry)
             title = _entry_value(entry, "title") or link or "Untitled feed entry"
             summary = _entry_value(entry, "summary") or _entry_value(entry, "description") or ""
+            if response.url.host == "bsky.app" and not _entry_value(entry, "title"):
+                title = plain_text(str(summary))[:160] or title
             content = ""
             content_items = _entry_value(entry, "content")
             if isinstance(content_items, list) and content_items:

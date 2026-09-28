@@ -55,7 +55,7 @@ test("source editor browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, 
   const window = { start: "2026-08-01T00:00:00Z", end: "2026-08-31T00:00:00Z" };
   const candidate = { name: "Discovered feed", plugin: "rss-atom", enabled: true, config: { url: "https://example.com/feed", custom: { keep: true } } };
   const source = (id, profile, config = {}) => ({ ...candidate, id, name: `Saved ${id}`, owner_id: owner, created_at: window.start, updated_at: window.end, config: { ...candidate.config, profile, ...config } });
-  const plugins = ["rss-atom", "html-news"].map((key) => ({ key, name: key, description: "", config_schema: { properties: { enrichment_profile: { enum: ["custom"] } } } }));
+  const plugins = ["rss-atom", "html-news", "x"].map((key) => ({ key, name: key, description: "", config_schema: { properties: { enrichment_profile: { enum: ["custom"] } } } }));
 
   async function setup(width = 1200) {
     const page = await browser.newPage({ viewport: { width, height: width === 320 ? 640 : width === 390 ? 844 : 900 } });
@@ -79,7 +79,7 @@ test("source editor browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, 
       if (path === "/plugins") return send(plugins);
       if (path === "/catalog") return send([candidate]);
       if (path === "/sources/discover") return send(state.candidates);
-      if (path === "/sources/preview") return send({ window, changes: [{ title: "Release preview", url: "https://example.com/release", published_at: window.end, external_id: "release", summary: "A useful release", content: "<p>Safe preview</p><script>window.unsafePreview = true</script>" }] });
+      if (path === "/sources/preview") return state.previewUnavailable ? send({}, 424) : send({ window, changes: [{ title: "Release preview", url: "https://example.com/release", published_at: window.end, external_id: "release", summary: "A useful release", content: "<p>Safe preview</p><script>window.unsafePreview = true</script>" }] });
       if (path === "/sources" && method === "GET") return send(state.loadFailure ? {} : state.sources, state.loadFailure ? 500 : 200);
       if (path === "/sources" && method === "POST") {
         if (state.saveFailure) return send({}, 500);
@@ -133,6 +133,33 @@ test("source editor browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, 
       return event.defaultPrevented;
     });
   }
+
+  await t.test("X discovery selects the keyless handler and saves a subscription", async () => {
+    const { page, state } = await setup();
+    state.candidates = [{ name: "@example on X", plugin: "x", enabled: true, config: { url: "https://x.com/example" } }];
+    await page.getByLabel("Find a source").fill("https://x.com/example/status/123");
+    await page.getByLabel("Find a source").press("Enter");
+    await idle(page);
+    assert.equal(state.calls.find((call) => call.path === "/sources/preview").body.plugin, "x");
+    await page.getByLabel("Save in profile").selectOption("Work");
+    await page.getByRole("button", { name: "Save only", exact: true }).click();
+    await idle(page);
+    assert.equal(state.sources.at(-1).plugin, "x");
+    assert.equal(state.sources.at(-1).config.url, "https://x.com/example");
+    assert.equal(state.sources.at(-1).config.profile, "Work");
+  });
+
+  await t.test("unavailable keyless X feed reports an error without saving or requesting keys", async () => {
+    const { page, state } = await setup();
+    state.previewUnavailable = true;
+    state.candidates = [{ name: "@example on X", plugin: "x", enabled: true, config: { url: "https://x.com/example" } }];
+    await page.getByLabel("Find a source").fill("https://x.com/example");
+    await page.getByLabel("Find a source").press("Enter");
+    await idle(page);
+    assert.match(await page.getByRole('alert').first().textContent(), /keyless public timeline.*unavailable/);
+    assert.equal(await page.getByRole('button', { name: 'Save only', exact: true }).isDisabled(), true);
+    assert.equal(count(state, '/sources'), 0);
+  });
 
   await t.test("profile-free discovery, metadata retention, inline profile, Save only, and fresh draft focus", async () => {
     const { page, state } = await setup();

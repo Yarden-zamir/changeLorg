@@ -141,7 +141,7 @@ An active URL `source` filter adds `source_id={id}` to `GET /changes`. The serve
 10. Discovery reads the normalized target, with an additional commit request only under GitHub Release Fallback below. Body parsing recognizes RSS/Atom, including valid empty feeds; suffixes and media types alone prove nothing.
 11. HTML discovery accepts `<link rel="alternate">` with `application/rss+xml` or `application/atom+xml`. Relative links use the final response URL and first valid `<base href>`.
 12. Candidates pass structural public-URL checks, deduplicate by resolved URL, and stop at 10. Discovery neither resolves candidate DNS nor fetches alternate candidates.
-13. Candidates use `plugin: "rss-atom"`, `enabled: true`, a display name, and `config.url`. They contain no profile and remain unverified until preview.
+13. Feed candidates use `plugin: "rss-atom"`; X candidates use `plugin: "x"`. Both include `enabled: true`, a display name, and `config.url`, contain no profile, and remain unverified until preview.
 14. A successful response with no direct feed or advertised alternates returns `[]`. It does not invent an HTML handler or selectors.
 15. One result automatically selects its handler and starts preview. With multiple results, an explicit choice automatically starts preview.
 16. Preview requires no profile. Save requires explicit profile selection or creation and an explicit save action.
@@ -163,6 +163,10 @@ Discovery errors use the shared safe-error display. The following statuses disti
 | `502` | Discovery fetch failure, including DNS, redirect, upstream HTTP, response-size, or deadline failures. |
 
 The general request-body limit and authentication-service failures still apply.
+
+## Social Sources
+
+X/Twitter profile and post links normalize to the account profile and select a keyless public-embed handler without a discovery fetch. Preview returns `424` when the public timeline is blocked, rate-limited, or malformed. Up to 200 embedded entries are read through the bounded public fetcher, one card per stable post ID. Coverage is best-effort, not a complete historical timeline. X supports URL/profile/include/exclude configuration; no API key, login cookie, or enrichment setting is accepted. Bluesky profile/post links normalize to the public account RSS feed.
 
 ## GitHub Release Fallback
 

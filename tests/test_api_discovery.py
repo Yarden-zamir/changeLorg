@@ -27,6 +27,28 @@ def assert_no_persistence(owner: str) -> None:
     assert store.list_changes(owner_id=None, include_dismissed=True) == []
 
 
+def test_x_discovery_and_unavailable_keyless_preview(api_client, monkeypatch):
+    from changelorg.plugins.x import XPlugin, XUnavailable
+
+    def unavailable(*args):
+        raise XUnavailable("Unavailable public timeline")
+
+    monkeypatch.setattr(XPlugin, "fetch", unavailable)
+    headers = owner_headers(api_client)
+    response = api_client.post(
+        "/sources/discover",
+        headers=headers,
+        json={"url": "https://x.com/Example/status/123"},
+    )
+    assert response.status_code == 200
+    draft = response.json()[0]
+    assert draft["plugin"] == "x"
+    assert draft["config"]["url"] == "https://x.com/Example"
+    preview = api_client.post("/sources/preview", headers=headers, json=draft)
+    assert preview.status_code == 424
+    assert_no_persistence(headers["X-Changelorg-Owner"])
+
+
 @pytest.mark.parametrize(
     "header,value,status",
     [

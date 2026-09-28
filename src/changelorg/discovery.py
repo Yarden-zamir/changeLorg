@@ -9,6 +9,7 @@ import httpx
 from changelorg.feeds import fetch_feed, github_release_repository
 from changelorg.models import SourceCreate
 from changelorg.network import PublicFetcher, PublicFetchError, validate_public_url
+from changelorg.social import X_HOSTS, social_url, x_username
 
 
 def normalize_discovery_url(value: str) -> httpx.URL:
@@ -45,7 +46,7 @@ def normalize_discovery_url(value: str) -> httpx.URL:
         ):
             raise ValueError("Enter a public domain with a dot and no spaces")
     if url.host not in {"github.com", "www.github.com"}:
-        return url
+        return social_url(url)
 
     parts = url.path.removeprefix("/").rstrip("/").split("/")
     if len(parts) < 2:
@@ -170,6 +171,8 @@ def _source(url: httpx.URL, *titles: str) -> SourceCreate:
 def discover_sources(value: str) -> list[SourceCreate]:
     """Read a target with repository fallback. Preview verifies alternates. The API owns the shared fetch slot."""
     url = normalize_discovery_url(value)
+    if url.host in X_HOSTS:
+        return [SourceCreate(name=f"@{x_username(url)} on X", plugin="x", config={"url": str(url)}, enabled=True)]
     client = PublicFetcher()
     response, parsed, _ = fetch_feed(client, str(url))
     if parsed.get("version"):

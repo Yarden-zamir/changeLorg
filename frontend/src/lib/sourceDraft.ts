@@ -18,7 +18,7 @@ export function toDraft(source: SourceCreate): Draft {
 
 export function normalizedSource(value: Draft): SourceCreate {
   const config: Record<string, unknown> = { ...value.source.config, url: stringConfig(value.source, "url").trim() };
-  if (value.source.plugin === "rss-atom") {
+  if (["rss-atom", "x"].includes(value.source.plugin)) {
     config.include_any = value.include.split("\n").map((term) => term.trim()).filter(Boolean);
     config.exclude_any = value.exclude.split("\n").map((term) => term.trim()).filter(Boolean);
     delete config.article_path_prefix;
@@ -33,6 +33,7 @@ export function normalizedSource(value: Draft): SourceCreate {
     else if (typeof config.limit === "string") config.limit = Number(config.limit);
   }
   if (!config.enrichment_profile) delete config.enrichment_profile;
+  if (value.source.plugin === "x") { delete config.enrichment_profile; delete config.user_agent; }
   return { ...value.source, name: value.source.name.trim(), config };
 }
 

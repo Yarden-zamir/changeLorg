@@ -38,6 +38,7 @@ from changelorg.network import (
 from changelorg.plugin import PluginConfigError, PluginManager
 from changelorg.plugins.html_news import HtmlNewsPlugin
 from changelorg.plugins.rss_atom import RssAtomPlugin
+from changelorg.plugins.x import XPlugin, XUnavailable
 from changelorg.refresh import HourlyRefreshLoop
 from changelorg.request_body import BodyLimitMiddleware
 from changelorg.seed import DEFAULT_SOURCES, seed_default_sources
@@ -116,7 +117,7 @@ def create_app() -> FastAPI:
         origins.append(public_origin)
     if "*" in origins:
         raise ValueError("CORS requires explicit origins")
-    manager = PluginManager([RssAtomPlugin(), HtmlNewsPlugin()])
+    manager = PluginManager([RssAtomPlugin(), HtmlNewsPlugin(), XPlugin()])
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -328,6 +329,10 @@ def create_app() -> FastAPI:
         with fetch_slot():
             try:
                 changes = manager.get(body.plugin).fetch(draft, window)
+            except XUnavailable:
+                raise HTTPException(
+                    424, "X public timeline is unavailable or rate-limited"
+                ) from None
             except (ValueError, PluginConfigError):
                 raise HTTPException(
                     502, "Source preview failed; check the URL and configuration"
