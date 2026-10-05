@@ -1,5 +1,7 @@
 # changelorg
 
+[![kitshn](https://kitshn.yarden-zamir.com/b/Yarden-zamir/changeLorg.svg)](https://changelorg.yarden-zamir.com)
+
 Paste X/Twitter or Bluesky profile/post links into source discovery to follow an account without API keys. X uses its public embedded timeline, which may be unavailable or rate-limited; Bluesky uses public RSS. Social subscriptions produce one card per post and retain the usual profile, shelf, note, and read-state controls.
 
 Personal changelog and news tracker with durable profiles, source subscriptions, and GitHub or anonymous browser identity.
