@@ -25,7 +25,7 @@ from changelorg.refresh import HourlyRefreshLoop
     "environment,origin",
     [
         ("prod", "https://changelorg.yarden-zamir.com"),
-        ("pr-123", "https://pr.123.changelorg.yarden-zamir.com"),
+        ("pr-123", "https://pr-123.changelorg.yarden-zamir.com"),
     ],
 )
 @pytest.mark.parametrize("configuration", ["unset", "blank"])

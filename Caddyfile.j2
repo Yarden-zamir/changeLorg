@@ -1,8 +1,4 @@
-{% if environment == "prod" -%}
-changelorg.yarden-zamir.com
-{%- else -%}
-pr.{{ environment.removeprefix("pr-") }}.changelorg.yarden-zamir.com
-{%- endif %} {
+{{ host("changelorg.yarden-zamir.com") }} {
     request_header -Authorization
     request_header -Remote-User
     request_header -X-Auth-Request-*
