@@ -108,7 +108,7 @@ def create_app() -> FastAPI:
             and environment.removeprefix("pr-").isascii()
             and environment.removeprefix("pr-").isdecimal()
         ):
-            public_origin = f"https://pr.{environment.removeprefix('pr-')}.changelorg.yarden-zamir.com"
+            public_origin = f"https://{environment}.changelorg.yarden-zamir.com"
         else:
             raise ValueError(
                 "Set CHANGELORG_PUBLIC_ORIGIN for this deployment environment"

@@ -14,7 +14,7 @@ X and Bluesky source handlers require no keys or new recipe settings. X uses its
 - Default sources seed once under `github:8178413`. Startup never restores deleted subscriptions.
 - The backend refresh loop runs every hour with `CHANGELORG_REFRESH_WINDOW=30d`.
 - Manual public generation is disabled unless `CHANGELORG_MANUAL_GENERATE_API=true` is set.
-- PR previews deploy to `pr.<number>.changelorg.yarden-zamir.com`.
+- PR previews deploy to `pr-<number>.changelorg.yarden-zamir.com`.
 
 ## SQLite Migration
 
