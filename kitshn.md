@@ -1,126 +1,64 @@
 # KitSHn Recipe
 
-This repository is a KitSHn recipe for deploying changelorg to `changelorg.yarden-zamir.com`.
+[![deployed with kitshn](https://raw.githubusercontent.com/Yarden-zamir/kitshn/main/assets/badge-deployed-with-kitshn.svg)](https://github.com/Yarden-zamir/kitshn)
 
-## Runtime
+This repository is a KitSHn recipe repo. KitSHn deploys recipe repos from GitHub Actions onto a VPS by resolving GitHub events to deployment environments, copying deployment params, and running the hosted KitSHn CLI through `uvx` on the VPS.
 
-X and Bluesky source handlers require no keys or new recipe settings. X uses its public embedded timeline on a best-effort basis; blocked or rate-limited responses remain visible errors. It does not use an authenticated API, login cookies, or third-party scraping credentials.
+## Contract
 
-- FastAPI serves the API and the built Vite frontend from one container.
-- Embedded DuckDB 1.5.5 uses `/data/changelorg.duckdb` inside the app container.
-- `${KITSHN_DATA_DIR}/data` persists that database on the VPS. There is no database service.
-- One app container runs one Uvicorn process with `--workers 1`. Do not scale either count.
-- One workflow concurrency group serializes recipe deployments. Active deployments are not cancelled by a new push.
-- Default sources seed once under `github:8178413`. Startup never restores deleted subscriptions.
-- The backend refresh loop runs every hour with `CHANGELORG_REFRESH_WINDOW=30d`.
-- Manual public generation is disabled unless `CHANGELORG_MANUAL_GENERATE_API=true` is set.
-- PR previews deploy to `pr-<number>.changelorg.yarden-zamir.com`.
+- `.kitshn.yaml` maps GitHub events to deployment environments.
+- `.github/workflows/kitshn.yml` calls the KitSHn reusable deploy workflow and grants it required GitHub token permissions.
+- `kitshn.md` documents the recipe contract and the KitSHn source commit that generated it. Rewrite the prose freely, but keep the Origin section at the end so `kitshn` can tell which template version produced this recipe.
+- Optional `compose.yml` defines container services for Docker Compose deployments.
+- Optional `Caddyfile.j2` defines public routing and is rendered on the VPS into a generated `Caddyfile`.
+- Socket ingress is the default routing pattern. Compose services can bind `${KITSHN_DEFAULT_SOCKET}` and Caddy can route to `{{ paths.default_socket }}`.
+- GitHub vars and secrets starting with `KITSHN_` become deployment params with the prefix stripped, except reserved infrastructure keys.
+- `KITSHN_SSH_KEY` and `KITSHN_VPS_HOST` are required for GitHub Actions to deploy to the VPS.
+- Run `kitshn recipe auth --vps-host <ssh-target>` before the first deploy-triggering push so those infrastructure keys exist.
+- Local users may run KitSHn from Homebrew or `uvx`; CI and VPS commands use hosted `uvx` and do not require a persistent VPS `kitshn` install.
 
-## SQLite Migration
+## Operating This Deployment
 
-Startup imports `/data/changelorg.db` when `/data/changelorg.duckdb` does not exist.
-After a successful import, the store deletes the SQLite file and its journal files. It creates no backup.
-The data mount stays unchanged, so an existing installation retains its data through this migration.
+Run these on the VPS. They take `--environment <env>` and default to `prod`. Pass `--help` to any
+of them for flags. Prefer them over raw `docker` and `docker compose`, which do not know this
+deployment's Compose project name or params file.
 
-Stop every old app process before the first DuckDB startup. Do not run the CLI against the live database.
-Rollback to a SQLite-only release cannot use the migrated database.
+- `kitshn diagnose <owner/repo>` — start here; checks Compose, sockets, Caddy routing and config.
+- `kitshn status <owner/repo>` — ref, services, health, route, socket, and last deploy, as JSON.
+- `kitshn logs <owner/repo> [service]` — Docker logs for this deployment.
+- `kitshn compose <owner/repo> -- <args>` — Docker Compose with this deployment's exact context.
+- `kitshn params list <owner/repo>` — param names without values.
+- `kitshn params get <owner/repo> <KEY> --show` — one param value, correctly decoded. Do not
+  hand-parse `params.env`; its values are quoted and escaped for Compose.
 
-## GitHub Authentication
+Services publish no host ports. Reach them through the public Caddy route, through
+`kitshn compose ... -- exec`, or from the shared `kitshn-edge` Docker network. `127.0.0.1:<port>`
+does not reach them.
 
-The `github-auth` Compose profile adds `oauth2-proxy` and `auth-socket-proxy`.
-The proxy uses [oauth2-proxy v7.15.4](https://github.com/oauth2-proxy/oauth2-proxy/releases/tag/v7.15.4).
-The latest-release check used `gh release view --repo oauth2-proxy/oauth2-proxy`.
+This recipe can deploy any environment name on demand through the workflow's `workflow_dispatch`
+input, even if it only maps `main -> prod`. Make `Caddyfile.j2` hostnames environment-aware
+before doing so, or Caddy will reject the duplicate site definition.
 
-Any GitHub user can sign in through `--email-domain=*`. There is no user, organization, or email allowlist.
-The cookie name is `_changelorg_oauth`. It uses Secure, HttpOnly, SameSite=Lax, path `/`, and no shared cookie domain.
-`--cookie-refresh=0` disables cookie refresh through internal auth checks.
+## This Recipe
 
-Caddy routes `/auth/*` through `${KITSHN_SOCKET_DIR}/auth.sock`.
-The auth socket proxy uses socat to forward that socket to `oauth2-proxy:4180`.
-All other requests use the existing app socket. Neither service publishes a host TCP port.
-Caddy does not use `forward_auth` or grant identity through request headers.
-Caddy removes inbound identity headers and removes token response headers from public auth responses.
+- Services: `app` (FastAPI and the built frontend) and `socket-proxy` (socat from the KitSHn socket to `app`). The `github-auth` Compose profile adds `oauth2-proxy` and `auth-socket-proxy`.
+- `app` keeps DuckDB at `/data/changelorg.duckdb`, from `${KITSHN_DATA_DIR}/data`. Run one container with one Uvicorn worker only.
+- Environments: `prod` from a push to `main`, and an ephemeral `pr-<number>` for each pull request.
+- Hostnames: `changelorg.yarden-zamir.com` for prod, `pr-<number>.changelorg.yarden-zamir.com` for previews.
+- Variables: `KITSHN_COMPOSE_PROFILES`, `KITSHN_CHANGELORG_AUTH_ENABLED`, `KITSHN_OAUTH2_PROXY_CLIENT_ID`, and optional `KITSHN_CHANGELORG_PUBLIC_ORIGIN`, `KITSHN_CHANGELORG_CORS_ORIGINS`.
+- Secrets: `KITSHN_OAUTH2_PROXY_CLIENT_SECRET`, `KITSHN_OAUTH2_PROXY_COOKIE_SECRET` (URL-safe base64).
+- Prod login needs both `COMPOSE_PROFILES=github-auth` and `CHANGELORG_AUTH_ENABLED=true`. Previews run without login by default.
 
-### API Prerequisite
+## Badge
 
-The API implements this contract. Before production, verify the complete proxy login flow:
+The badge above shows that this repo deploys with KitSHn. For the state of the latest `prod`
+deploy in the README, use this line.
 
-1. If `CHANGELORG_AUTH_ENABLED=true`, send the browser cookie to internal `GET http://oauth2-proxy:4180/auth/auth`.
-2. Read `X-Auth-Request-Access-Token` only from a successful internal auth response.
-3. Use that token for a server-side request to `https://api.github.com/user`.
-4. Verify the numeric GitHub `id` and use it as the account identity.
-5. Reject failed auth checks and invalid identities. Never trust inbound identity headers or browser-supplied tokens.
-6. Enforce the configured public origin and CORS policy for authenticated requests.
-
-`--set-xauthrequest=true` and `--pass-access-token=true` supply the internal token response header.
-The API must not expose or log the token. It must not accept a username or email as the account identity.
-
-### Production Prerequisites
-
-1. Create a GitHub OAuth App with homepage `https://changelorg.yarden-zamir.com`.
-2. Set its callback URL to `https://changelorg.yarden-zamir.com/auth/callback`.
-3. Supply the variables and secrets below through the production KitSHn parameter scope.
-4. Confirm that the resolved production parameters contain `COMPOSE_PROFILES=github-auth` and `CHANGELORG_AUTH_ENABLED=true`.
-5. Verify the API prerequisite through a real GitHub login before production use.
-6. Keep the existing data mount and stop old database owners before the first DuckDB startup.
-
-KitSHn removes the `KITSHN_` prefix from GitHub variables and secrets before Compose reads them.
-
-| GitHub variable or secret | Compose parameter | Production value |
-| --- | --- | --- |
-| Variable `KITSHN_COMPOSE_PROFILES` | `COMPOSE_PROFILES` | `github-auth`, required |
-| Variable `KITSHN_CHANGELORG_AUTH_ENABLED` | `CHANGELORG_AUTH_ENABLED` | `true`, required |
-| Variable `KITSHN_OAUTH2_PROXY_CLIENT_ID` | `OAUTH2_PROXY_CLIENT_ID` | GitHub OAuth App client ID, required |
-| Secret `KITSHN_OAUTH2_PROXY_CLIENT_SECRET` | `OAUTH2_PROXY_CLIENT_SECRET` | GitHub OAuth App client secret, required |
-| Secret `KITSHN_OAUTH2_PROXY_COOKIE_SECRET` | `OAUTH2_PROXY_COOKIE_SECRET` | 32 random bytes, URL-safe base64 encoded, required |
-| Variable `KITSHN_CHANGELORG_PUBLIC_ORIGIN` | `CHANGELORG_PUBLIC_ORIGIN` | Optional `https://changelorg.yarden-zamir.com`, without a trailing slash |
-| Variable `KITSHN_CHANGELORG_CORS_ORIGINS` | `CHANGELORG_CORS_ORIGINS` | Optional additional trusted frontend origins, comma-separated |
-
-Generate and store the cookie secret without a file or terminal output:
-
-```sh
-uv run --no-project - <<'PY'
-import base64
-import secrets
-import subprocess
-
-secret = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("ascii")
-subprocess.run(
-    ["gh", "secret", "set", "KITSHN_OAUTH2_PROXY_COOKIE_SECRET", "--repo", "Yarden-zamir/changeLorg", "--env", "prod"],
-    input=secret, text=True, check=True,
-)
-PY
+```markdown
+[![kitshn prod](https://img.shields.io/github/deployments/Yarden-zamir/changeLorg/prod?label=kitshn%20%C2%B7%20prod&labelColor=2F3532&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNCAxNCI+PGcgZmlsbD0iI2ZmZiI+PHJlY3QgeD0iNiIgeT0iMS4yIiB3aWR0aD0iMiIgaGVpZ2h0PSIxLjYiIHJ4PSIwLjUiLz48cmVjdCB4PSIyLjIiIHk9IjMuNCIgd2lkdGg9IjkuNiIgaGVpZ2h0PSIxLjUiIHJ4PSIwLjc1Ii8+PHJlY3QgeD0iMyIgeT0iNS42IiB3aWR0aD0iOCIgaGVpZ2h0PSI2LjYiIHJ4PSIxLjYiLz48cmVjdCB4PSIwLjgiIHk9IjYuOCIgd2lkdGg9IjIuNCIgaGVpZ2h0PSIxLjQiIHJ4PSIwLjciLz48cmVjdCB4PSIxMC44IiB5PSI2LjgiIHdpZHRoPSIyLjQiIGhlaWdodD0iMS40IiByeD0iMC43Ii8+PC9nPjwvc3ZnPgo=)](https://changelorg.yarden-zamir.com)
 ```
 
-Standard base64 can contain characters that the proxy rejects. Replacement of this secret signs out existing users.
-Never print real parameters with `docker compose config`. Use `docker compose config --quiet` for real credentials.
+## Origin
 
-Compose substitutes empty credentials so disabled profiles need no secrets.
-When the profile starts, oauth2-proxy rejects missing credentials. The auth socket healthcheck also probes its `/ping` endpoint.
-Enabling the profile does not enable API authentication; production requires both parameters above.
-
-### Previews and Development
-
-By default, `COMPOSE_PROFILES` is unset and `CHANGELORG_AUTH_ENABLED=false`.
-Previews need no OAuth credentials. The `/auth/*` route has no active upstream in this mode.
-Do not expose private data through unauthenticated previews.
-
-The internal URL defaults to `http://oauth2-proxy:4180`; Compose fixes it to that service address.
-If `CHANGELORG_PUBLIC_ORIGIN` is empty, the API derives the production or preview origin from `KITSHN_ENVIRONMENT`.
-An unknown environment requires an explicit origin. The OAuth callback still defaults to the production origin.
-Compose permits the derived origin and any explicit `CHANGELORG_CORS_ORIGINS`. It does not permit localhost by default.
-Outside KitSHn, the API defaults to `http://localhost:5173,http://127.0.0.1:5173` for local frontend development.
-The account-error screen provides an explicit session reset, even when the authentication profile is disabled.
-`POST /session/reset` clears OAuth cookies without any change to anonymous data or its browser token.
-
-For an authenticated preview, enable both auth parameters and set `CHANGELORG_PUBLIC_ORIGIN` to its HTTPS origin.
-Use a separate GitHub OAuth App with that preview origin and its `/auth/callback` URL.
-Set `CHANGELORG_CORS_ORIGINS` to that origin. Do not reuse production secrets in untrusted pull requests.
-
-## Files
-
-- `.kitshn.yaml`: event-to-environment mapping.
-- `.github/workflows/kitshn.yml`: GitHub Actions deployment workflow.
-- `compose.yml`: deployment services.
-- `Caddyfile.j2`: public app and auth routes.
-- `Dockerfile`: frontend build and single-process Python runtime from the frozen dependency lock.
+- Generated from: https://github.com/Yarden-zamir/kitshn/blob/d266328205603dfddffc27c7ac5d42051883d0b0/src/kitshn/repo_init.py
+- KitSHn commit: `d266328205603dfddffc27c7ac5d42051883d0b0`
