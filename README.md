@@ -105,6 +105,22 @@ The API origin is configurable through `CHANGELORG_PUBLIC_ORIGIN`.
 `CHANGELORG_CORS_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173` for development.
 See [KitSHn prerequisites and auth contract](kitshn.md) for production parameters, callback setup, and preview isolation.
 
+## Agent Access
+
+Agents and scripts use a GitHub account's data with an agent token. The owner approves each agent once in the browser. Tokens read only, unless the agent asks for write access with `--write`.
+
+```sh
+uvx --from git+https://github.com/Yarden-zamir/changeLorg changelorg auth login --name "Claude on my-mac"
+# Open the printed link, compare the code, and approve.
+uvx --from git+https://github.com/Yarden-zamir/changeLorg changelorg api "/changes?profile=dev&since=10d&include_dismissed=true&limit=500"
+```
+
+- `auth login` prints the approval link and waits up to 10 minutes. `auth status` exits `0` while the saved token works.
+- With a write token, `api -X PATCH /changes/12 -d '{"saved": true}'` changes data.
+- The token lives in `~/.config/changelorg/credentials.json` with mode `0600`. It ends 90 days after its last use.
+- The GitHub account menu lists connected agents and revokes them. `auth logout` revokes the token from the agent side.
+- `--server` or `CHANGELORG_SERVER` selects another server. See [Agent Access](docs/user-data.md#agent-access).
+
 ## Plugin Directories
 
 Local plugins are loaded from:

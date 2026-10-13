@@ -2,6 +2,7 @@ import { BookmarkCheck, CalendarDays, Inbox, LibraryBig, Newspaper, Undo2 } from
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { ChangeCard } from "./components/ChangeCard";
+import { ErrorNote } from "./components/ErrorNote";
 import { AccountArea } from "./components/AccountArea";
 import { SourceEditor } from "./components/SourceEditor";
 import { Badge } from "./components/ui/badge";
@@ -952,14 +953,6 @@ function DeskStat({ label, value, onClick }: { label: string; value: number; onC
     </>;
   const classes = "min-w-0 bg-[#1d1a16] px-1 py-3 lg:px-3 lg:py-4";
   return onClick ? <button type="button" className={`${classes} hover:bg-[#292520]`} onClick={onClick} aria-label={label === "sources" ? "Manage sources and profiles" : "View cleared items"}>{content}</button> : <div className={classes}>{content}</div>;
-}
-
-function ErrorNote({ message }: { message: string }) {
-  return (
-    <div role="alert" className="whitespace-pre-line rounded-2xl border border-red-900/30 bg-red-100 p-4 text-sm font-medium leading-6 text-red-950 shadow-sm">
-      {message}
-    </div>
-  );
 }
 
 function UndoToast({ label, pending, onUndo }: { label: string; pending: boolean; onUndo: () => void }) {

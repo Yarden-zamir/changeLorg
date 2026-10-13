@@ -1,10 +1,11 @@
 {{ host("changelorg.yarden-zamir.com") }} {
-    request_header -Authorization
     request_header -Remote-User
     request_header -X-Auth-Request-*
     request_header -X-Forwarded-*
 
     handle /auth/* {
+        # Agent tokens reach the app only. oauth2-proxy never receives client Authorization headers.
+        request_header -Authorization
         reverse_proxy unix//{{ paths.socket }}/auth.sock {
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-Uri {uri}

@@ -4,6 +4,7 @@
 
 changelorg tracks source changes and generates private, time-windowed feeds for anonymous owners and GitHub accounts.
 The website displays the feed. The CLI exports structured data for analysis and summaries.
+Agents read, and with write access also change, a GitHub account's data with an agent token after the owner approves them in the browser.
 
 This spec defines the approved target behavior, not completed implementation or deployment verification.
 [Frontend API Contract](../frontend/API.md) defines request and response contracts. [User Data](user-data.md) defines storage, ownership, authentication, and imports.
@@ -254,9 +255,16 @@ Commands:
 - `changelorg sources disable ID`: Disable a source.
 - `changelorg changes generate --since 7d`: Fetch enabled sources, cache results, and print changes.
 - `changelorg changes list`: Print cached changes without fetching.
+- `changelorg auth login [--name TEXT] [--write]`: Start agent access, print the approval link and code, wait for approval, and save the token. `--write` asks for write access; the default is read only.
+- `changelorg auth status`: Check the saved token through `GET /me`. Exit `0` when the token works, else exit `1`.
+- `changelorg auth logout`: Revoke the saved token on the server, then delete it locally.
+- `changelorg api [-X METHOD] [-d JSON] PATH`: Send an authenticated request to a server path and print the JSON response. The method defaults to `GET`.
 
 Behavior:
 
+- `auth` and `api` commands talk to a server, not the local database. They use `--server`, then `CHANGELORG_SERVER`, then `https://changelorg.yarden-zamir.com`.
+- Saved tokens live in `credentials.json` under `$XDG_CONFIG_HOME/changelorg` or `~/.config/changelorg`, keyed by server origin, with file mode `0600`. `CHANGELORG_CREDENTIALS` overrides the path.
+- A failed approval, an expired request, or a rejected token exits non-zero with a message. It never prints the raw token.
 - `--db PATH` overrides the DuckDB database path.
 - `--owner ID` selects `github:<numeric-id>` or `anon:<sha256>`. The trusted CLI defaults to `github:8178413`.
 - Stop the app before CLI database access. One process owns the database.
@@ -297,6 +305,8 @@ Additional routes:
 - `GET /sources/{source_id}`: Current owner's source only.
 - `GET /refresh/status`: No cross-owner source details or errors in public responses.
 - `POST /changes/generate`: Optional owner-scoped generation, disabled unless `CHANGELORG_MANUAL_GENERATE_API=true`.
+- `POST /agent/device`, `POST /agent/token`, `DELETE /agent/token`, `GET /agent/device/{user_code}`, `POST /agent/device/{user_code}/approve`, `POST /agent/device/{user_code}/deny`, `GET /agent/tokens`, and `DELETE /agent/tokens/{id}`: [Agent Access](user-data.md#agent-access).
+- `GET /connect`: The frontend page for agent approval.
 
 Behavior:
 
@@ -455,6 +465,7 @@ Query parameters:
 - Revisit storage before multiple workers, replicas, or concurrent CLI database access.
 - `/data/changelorg.duckdb` uses the persistent `${KITSHN_DATA_DIR}/data` mount. No separate database service is required.
 - Optional GitHub authentication uses `oauth2-proxy`. The app verifies its cookie through the internal auth endpoint and GitHub `/user`.
+- The proxy session cookie lasts 30 days. Agent tokens expire 90 days after their last use.
 - The app never treats public identity headers as authentication. [User Data](user-data.md) defines the identity checks and token rules.
 - Data survives restarts and deploys. No automatic expiry applies to profiles, sources, changes, or state, including anonymous data.
 - Feed and refresh windows limit selection, not retention.
@@ -468,3 +479,4 @@ Query parameters:
 - Google sign-in. The separate Google sign-in proposal is superseded by the GitHub account contract.
 - Private social accounts, X lists/search, and complete historical social timelines.
 - A dedicated GitHub releases API plugin. Public release feeds can use RSS/Atom.
+- OAuth clients registered by other parties.

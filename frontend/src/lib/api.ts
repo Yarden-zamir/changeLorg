@@ -142,6 +142,9 @@ export type SourceCreate = { name: string; plugin: string; config: Record<string
 export type Source = SourceCreate & { config: Record<string, unknown> & { profile: string }; id: number; owner_id: string; created_at: string; updated_at: string };
 export type Plugin = { key: string; name: string; description: string; config_schema: { properties?: Record<string, { enum?: unknown[] }> } };
 export type TimeWindow = { start: string; end: string };
+export type AgentScope = "read" | "write";
+export type AgentRequest = { user_code: string; client_name: string; scope: AgentScope; status: "pending" | "approved" | "denied"; created_at: string; expires_at: string };
+export type AgentToken = { id: number; name: string; scope: AgentScope; created_at: string; last_used_at: string; expires_at: string };
 
 export async function getIdentity() {
   const ticket = ++identityRequest;

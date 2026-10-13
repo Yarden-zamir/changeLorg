@@ -49,6 +49,7 @@ services:
       - --cookie-httponly=true
       - --cookie-samesite=lax
       - --cookie-path=/
+      - --cookie-expire=720h
       - --cookie-refresh=0
       - --upstream=static://202
     environment:

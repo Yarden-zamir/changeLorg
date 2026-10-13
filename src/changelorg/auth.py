@@ -9,6 +9,11 @@ import httpx
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
+from changelorg import store
+from changelorg.models import AgentScope, utc_now
+
+AGENT_TOKEN_PREFIX = "clg_"
+
 
 class GitHubUser(BaseModel):
     id: int = Field(strict=True, gt=0)
@@ -20,6 +25,8 @@ class Identity:
     owner_id: str
     login: str | None
     anonymous_owner: str | None
+    agent_token_id: int | None = None
+    agent_scope: AgentScope | None = None
 
     @property
     def authenticated(self) -> bool:
@@ -38,18 +45,79 @@ def anonymous_owner(token: str | None) -> str | None:
     return "anon:" + hashlib.sha256(str(parsed).encode("ascii")).hexdigest()
 
 
-def request_identity(request: Request) -> Identity:
-    anonymous = anonymous_owner(request.headers.get("X-Anonymous-Token"))
-    login = None
-    owner = anonymous
-    # Proxy cookies can span numbered chunks. A rejected login never falls back to anonymous writes.
-    has_session = any(
+def hash_secret(value: str) -> str:
+    """Hash a high-entropy agent token or device code for storage and lookup."""
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
+def _has_session_cookie(request: Request) -> bool:
+    # Proxy cookies can span numbered chunks.
+    return any(
         name == "_changelorg_oauth"
         or name.startswith("_changelorg_oauth_")
         and name.removeprefix("_changelorg_oauth_").isdecimal()
         for name in request.cookies
     )
-    if has_session:
+
+
+def _bearer_agent_token(request: Request) -> str | None:
+    """Return a changelorg agent token. Other Authorization values grant nothing and stay ignored."""
+    scheme, _, value = request.headers.get("authorization", "").partition(" ")
+    value = value.strip()
+    if scheme.lower() != "bearer" or not value.startswith(AGENT_TOKEN_PREFIX):
+        return None
+    return value
+
+
+def _agent_identity(request: Request) -> Identity | None:
+    token = _bearer_agent_token(request)
+    if token is None:
+        return None
+    if "X-Anonymous-Token" in request.headers or _has_session_cookie(request):
+        raise HTTPException(400, "Send an agent token or a browser identity, not both")
+    agent = store.resolve_agent_token(hash_secret(token), utc_now()) if token.isascii() else None
+    if agent is None:
+        raise HTTPException(401, "The agent token is unknown, revoked, or expired. Run changelorg auth login.")
+    expected = request.headers.get("X-Changelorg-Owner")
+    if expected is not None and expected != agent.owner_id:
+        raise HTTPException(412, "The active account changed")
+    return Identity(agent.owner_id, agent.login, None, agent.id, agent.scope)
+
+
+def agent_identity(request: Request) -> Identity:
+    """Identity for routes that act on the agent token of the request."""
+    agent = _agent_identity(request)
+    if agent is None:
+        raise HTTPException(401, "An agent token is required")
+    return agent
+
+
+def browser_identity(request: Request) -> Identity:
+    """Identity for routes that only a browser may use, such as imports. Agent tokens get 403."""
+    if _bearer_agent_token(request) is not None:
+        raise HTTPException(403, "Agent tokens cannot use this route")
+    return request_identity(request)
+
+
+def github_browser_identity(request: Request) -> Identity:
+    """Identity for agent approval and token management: a GitHub browser session, never a token."""
+    identity = browser_identity(request)
+    if not identity.authenticated:
+        raise HTTPException(403, "Sign in with GitHub to manage agent access")
+    return identity
+
+
+def request_identity(request: Request) -> Identity:
+    agent = _agent_identity(request)
+    if agent is not None:
+        if request.method not in {"GET", "HEAD"} and agent.agent_scope != "write":
+            raise HTTPException(403, "This agent token can only read. Run changelorg auth login --write for write access.")
+        return agent
+    anonymous = anonymous_owner(request.headers.get("X-Anonymous-Token"))
+    login = None
+    owner = anonymous
+    # A rejected login never falls back to anonymous writes.
+    if _has_session_cookie(request):
         if not request.app.state.auth_enabled:
             raise HTTPException(401, "GitHub authentication is disabled")
         client: httpx.Client = request.app.state.auth_client
