@@ -337,6 +337,8 @@ Behavior:
 
 The frontend manages private profiles, sources, feeds, and change state for the current owner.
 
+The interface uses the tick3d neo-brutalism style. `frontend/src/index.css` holds its light and dark tokens; `prefers-color-scheme` selects the mode. The style has ink borders, hard offset shadows, no blur, and no continuous animations.
+
 Behavior:
 
 - Loads cached changes from the backend.
