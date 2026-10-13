@@ -1,6 +1,6 @@
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <div role="alert" className="whitespace-pre-line rounded-2xl border border-red-900/30 bg-red-100 p-4 text-sm font-medium leading-6 text-red-950 shadow-sm">
+    <div role="alert" className="whitespace-pre-line rounded border-2 border-l-8 border-line border-l-error bg-error-surface p-4 text-sm font-semibold leading-6 text-ink">
       {message}
     </div>
   );

@@ -370,16 +370,16 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
 
   return (
     <dialog ref={dialog} className="source-editor" aria-labelledby="editor-title" onCancel={(event) => { event.preventDefault(); close(); }}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-950 pb-4">
-        <div><p className="text-xs font-black uppercase tracking-[0.25em] text-stone-500">Edition workshop</p><h2 id="editor-title" className="font-serif text-3xl font-black">Sources &amp; profiles</h2></div>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-line pb-4">
+        <div><p className="text-xs font-extrabold uppercase tracking-[0.06em] text-muted">Edition workshop</p><h2 id="editor-title" className="text-3xl font-extrabold">Sources &amp; profiles</h2></div>
         <button className="editor-button" disabled={Boolean(busy)} onClick={close}>Close</button>
       </div>
       <form id="source-discovery" className="my-5" onSubmit={(event) => { event.preventDefault(); discover(); }}>
-        <label className="font-serif text-xl">Find a source<input ref={searchInput} type="search" maxLength={2000} value={query} readOnly={Boolean(busy)} onChange={(event) => { setQuery(event.target.value); setDiscovery(null); }} placeholder="Website, X, Bluesky, or GitHub link" aria-describedby="source-search-hint" /></label>
-        <p id="source-search-hint" className="mt-2 text-sm leading-6 text-stone-600">Names search your saved sources and optional suggestions. Paste a link to discover feeds from any site, or use GitHub owner/repo.</p>
+        <label className="text-xl font-extrabold">Find a source<input ref={searchInput} type="search" maxLength={2000} value={query} readOnly={Boolean(busy)} onChange={(event) => { setQuery(event.target.value); setDiscovery(null); }} placeholder="Website, X, Bluesky, or GitHub link" aria-describedby="source-search-hint" /></label>
+        <p id="source-search-hint" className="mt-2 text-sm leading-6 text-muted">Names search your saved sources and optional suggestions. Paste a link to discover feeds from any site, or use GitHub owner/repo.</p>
       </form>
       {busy ? <p role="status" className="editor-notice">{busy}...</p> : null}
-      {error ? <p role="alert" className="editor-notice border-red-900/30 bg-red-50 text-red-950">{error}</p> : null}
+      {error ? <p role="alert" className="editor-notice border-l-8 border-l-error bg-error-surface">{error}</p> : null}
       {message ? <p role="status" className="editor-notice">{message}</p> : null}
       {syncError ? <p role="alert" className="editor-notice">{syncError} <button type="button" className="underline" disabled={Boolean(busy)} onClick={() => void run("Sync editor", sync)}>Retry sync only</button></p> : null}
       {!ready && !busy ? <button className="editor-button" onClick={() => void run("Load editor", load)}>Retry editor load</button> : null}
@@ -397,7 +397,7 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
           <h3 className="editor-list-title">Your sources / {matches.length}</h3>
           <div className="editor-source-list">
             {matches.map((source) => <button type="button" key={source.id} className="editor-source" disabled={Boolean(busy)} aria-pressed={selected?.id === source.id} onClick={() => choose(source, source)}><strong>{source.name}</strong><span>{stringConfig(source, "profile")} / {source.enabled ? "Enabled" : "Disabled"}</span></button>)}
-            {ready && matches.length === 0 ? <p className="py-3 text-sm text-stone-500">No matching saved sources.</p> : null}
+            {ready && matches.length === 0 ? <p className="py-3 text-sm text-muted">No matching saved sources.</p> : null}
           </div>
           {!link ? <>
             <h3 className="editor-list-title mt-5">Suggestions</h3>
@@ -405,17 +405,17 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
             {catalogError ? <p role="alert" className="py-3 text-sm">Suggestions are unavailable. Link discovery still works. <button type="button" className="underline" onClick={() => setCatalogRevision((value) => value + 1)}>Retry suggestions</button></p> : null}
             <div className="editor-source-list">
               {catalog.map((source, index) => <button type="button" key={`${source.name}:${index}`} className="editor-source" disabled={Boolean(busy) || !ready} onClick={() => choose(source, null, source.plugin === "rss-atom")}><strong>{source.name}</strong><span>{source.plugin === "rss-atom" ? "RSS/Atom" : source.plugin}</span></button>)}
-              {!catalogLoading && !catalogError && catalog.length === 0 ? <p className="py-3 text-sm text-stone-500">No suggestions. Paste a website link or GitHub owner/repo to discover a feed.</p> : null}
+              {!catalogLoading && !catalogError && catalog.length === 0 ? <p className="py-3 text-sm text-muted">No suggestions. Paste a website link or GitHub owner/repo to discover a feed.</p> : null}
             </div>
           </> : null}
         </section>
         <section className="min-w-0" aria-label="Source draft">
           {draft ? <>
-            <h3 className="mb-3 font-serif text-xl font-black">Preview &amp; save</h3>
+            <h3 className="mb-3 text-xl font-extrabold">Preview &amp; save</h3>
             <form id="source-draft" noValidate onSubmit={(event) => { event.preventDefault(); save(true); }}>
               <fieldset disabled={Boolean(busy) || !ready} className="grid min-w-0 gap-4">
-                <p className="text-xs font-black uppercase tracking-widest text-stone-500">{selected ? `Current subscription / ${selected.enabled ? "Enabled" : "Disabled"}` : "New candidate"}{needsSave ? " / Unsaved" : ""}</p>
-                <p className="break-all text-sm text-stone-600">{draft.source.plugin === "rss-atom" ? "RSS/Atom" : draft.source.plugin === "html-news" ? "Manual HTML news" : draft.source.plugin === "x" ? "X posts" : draft.source.plugin} / {stringConfig(draft.source, "url")}</p>
+                <p className="text-xs font-extrabold uppercase tracking-[0.06em] text-muted">{selected ? `Current subscription / ${selected.enabled ? "Enabled" : "Disabled"}` : "New candidate"}{needsSave ? " / Unsaved" : ""}</p>
+                <p className="break-all text-sm text-muted">{draft.source.plugin === "rss-atom" ? "RSS/Atom" : draft.source.plugin === "html-news" ? "Manual HTML news" : draft.source.plugin === "x" ? "X posts" : draft.source.plugin} / {stringConfig(draft.source, "url")}</p>
                 <label>Name<input required maxLength={200} value={draft.source.name} onChange={(event) => edit({ name: event.target.value })} /></label>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="min-w-0 flex-1">Save in profile<select value={stringConfig(draft.source, "profile")} onChange={(event) => edit({}, { profile: event.target.value })}><option value="">Select a profile to save</option>{profiles.map((profile) => <option key={profile.name}>{profile.name}</option>)}</select></label>
@@ -425,29 +425,29 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                   <label className="min-w-0 flex-1">New profile name<input ref={newProfile} maxLength={100} value={profileName} onChange={(event) => setProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void run("Create profile", () => createProfile(true), true); } }} placeholder="Research, work, games..." /></label>
                   <button type="button" className="editor-button" disabled={!profileName.trim()} onClick={() => void run("Create profile", () => createProfile(true), true)}>Create and select</button>
                 </div> : null}
-                {profiles.length === 0 ? <p className="text-sm text-stone-600">Preview needs no profile. Create a profile when you want to save.</p> : null}
+                {profiles.length === 0 ? <p className="text-sm text-muted">Preview needs no profile. Create a profile when you want to save.</p> : null}
                 {!selected ? <label className="flex items-center gap-2"><input type="checkbox" checked={draft.source.enabled} onChange={(event) => edit({ enabled: event.target.checked })} />Enabled</label> : null}
-                {!supported ? <p role="alert" className="text-sm text-red-900">Select RSS/Atom, HTML news, or X posts to preview and save.</p> : null}
-                {draft.source.plugin === "x" ? <p className="text-sm text-stone-600">Keyless public timeline, one card per post. X can limit or block this feed; it may not include every recent post.</p> : null}
-                {preview ? <section className="editor-preview border-t-2 border-stone-950 pt-4" aria-label="Source preview">
-                  <h4 className="font-serif text-xl font-black">Preview / {Math.min(preview.changes.length, 10)} items</h4>
-                  {preview.changes.some((change) => change.metadata?.fallback_reason === "no_releases") ? <p className="mt-2 text-sm text-stone-600">This repository has no releases. Each item is one commit.</p> : null}
-                  <p className="my-2 text-xs text-stone-500">{formatDate(preview.window.start)} to {formatDate(preview.window.end)}. Preview writes nothing.</p>
+                {!supported ? <p role="alert" className="text-sm text-error-fg">Select RSS/Atom, HTML news, or X posts to preview and save.</p> : null}
+                {draft.source.plugin === "x" ? <p className="text-sm text-muted">Keyless public timeline, one card per post. X can limit or block this feed; it may not include every recent post.</p> : null}
+                {preview ? <section className="editor-preview border-t-2 border-line pt-4" aria-label="Source preview">
+                  <h4 className="text-xl font-extrabold">Preview / {Math.min(preview.changes.length, 10)} items</h4>
+                  {preview.changes.some((change) => change.metadata?.fallback_reason === "no_releases") ? <p className="mt-2 text-sm text-muted">This repository has no releases. Each item is one commit.</p> : null}
+                  <p className="my-2 text-xs text-muted">{formatDate(preview.window.start)} to {formatDate(preview.window.end)}. Preview writes nothing.</p>
                   {preview.changes.length === 0 ? <p className="editor-notice">No items in the last 30 days. Check the URL and filters. You can still save this source.</p> : null}
-                  <div className="editor-preview-items grid gap-3">{preview.changes.slice(0, 10).map((change, index) => <article key={index} className="min-w-0 rounded-2xl border border-stone-950/20 bg-white/60 p-4">
-                    <p className="text-xs text-stone-500">{formatDate(change.published_at)}</p>
-                    <h5 className="mt-2 font-serif text-xl font-black">{safeUrl(change.url) ? <a href={safeUrl(change.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">{change.title}</a> : change.title}</h5>
+                  <div className="editor-preview-items grid gap-3">{preview.changes.slice(0, 10).map((change, index) => <article key={index} className="min-w-0 rounded border-2 border-line bg-raised p-4">
+                    <p className="text-xs text-muted">{formatDate(change.published_at)}</p>
+                    <h5 className="mt-2 text-xl font-extrabold">{safeUrl(change.url) ? <a href={safeUrl(change.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">{change.title}</a> : change.title}</h5>
                     <div className="changelorg-rendered mt-3 max-h-64 overflow-auto text-sm leading-6" dangerouslySetInnerHTML={{ __html: renderedHtml(change.content || change.summary) }} />
                   </article>)}</div>
                 </section> : <p className="editor-notice">No current preview. Preview this source before you save. No profile is required.</p>}
-                {["rss-atom", "x"].includes(draft.source.plugin) ? <details open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)} className="border-t border-stone-950/20 pt-3">
+                {["rss-atom", "x"].includes(draft.source.plugin) ? <details open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)} className="border-t-2 border-raised pt-3">
                   <summary className="cursor-pointer text-sm font-bold">Filters / {filterCounts.some(Boolean) ? `${filterCounts[0]} include, ${filterCounts[1]} exclude` : "None"}</summary>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <label>Include any term<textarea rows={3} value={draft.include} onChange={(event) => editDraft({ ...draft, include: event.target.value })} placeholder="One term per line" /></label>
                     <label>Exclude any term<textarea rows={3} value={draft.exclude} onChange={(event) => editDraft({ ...draft, exclude: event.target.value })} placeholder="One term per line" /></label>
                   </div>
                 </details> : null}
-                <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)} className="min-w-0 border-y border-stone-950/20 py-3">
+                <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)} className="min-w-0 border-y-2 border-raised py-3">
                   <summary className="cursor-pointer text-sm font-bold">Advanced / manual handler, URL &amp; enrichment</summary>
                   <div className="mt-4 grid min-w-0 gap-4">
                     <label>Plugin<select value={draft.source.plugin} onChange={(event) => edit({ plugin: event.target.value })}>{!supported ? <option value={draft.source.plugin}>{draft.source.plugin} (not editable)</option> : null}{plugins.filter((plugin) => ["rss-atom", "html-news", "x"].includes(plugin.key)).map((plugin) => <option key={plugin.key} value={plugin.key}>{plugin.name}</option>)}</select></label>
@@ -459,10 +459,10 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                     {draft.source.plugin !== "x" ? <label>Enrichment profile<select value={stringConfig(draft.source, "enrichment_profile")} onChange={(event) => edit({}, { enrichment_profile: event.target.value })}><option value="">Automatic / plugin default</option>{stringConfig(draft.source, "enrichment_profile") && !enrichment.includes(stringConfig(draft.source, "enrichment_profile")) ? <option value={stringConfig(draft.source, "enrichment_profile")}>{stringConfig(draft.source, "enrichment_profile")} (unavailable)</option> : null}{enrichment.map((name) => <option key={name}>{name}</option>)}</select></label> : null}
                   </div>
                 </details>
-                <p className="text-xs leading-5 text-stone-500">Preview shows up to 10 items. Only fetch settings require another preview; name, profile, and enabled state do not.</p>
+                <p className="text-xs leading-5 text-muted">Preview shows up to 10 items. Only fetch settings require another preview; name, profile, and enabled state do not.</p>
               </fieldset>
             </form>
-            {selected ? <div className="mt-5 flex flex-wrap gap-2 border-t border-stone-950/20 pt-4">
+            {selected ? <div className="mt-5 flex flex-wrap gap-2 border-t-2 border-raised pt-4">
               <button className="editor-button" disabled={Boolean(busy) || dirty} onClick={() => {
                 const toggle = () => void run(selected.enabled ? "Disable source" : "Enable source", async () => {
                   const saved = await api<Source>(`/sources/${selected.id}`, { owner, method: "PATCH", body: { enabled: !selected.enabled } });
@@ -477,7 +477,7 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                 else toggle();
               }}>{selected.enabled ? "Disable source" : "Enable source"}</button>
               <button type="button" className="editor-button" disabled={Boolean(busy)} onClick={() => { if (lock.current || pendingConfirmation.current) return; setSelected(null); candidate.current = null; setSavedThisSession(false); setFetchState("idle"); setMessage("Duplicate draft. Your edits stay in this draft. Save as a separate subscription; the original stays unchanged."); }}>Duplicate draft</button>
-              <button className="editor-button text-red-900" disabled={Boolean(busy)} onClick={() => askConfirmation({
+              <button className="editor-button text-error-fg" disabled={Boolean(busy)} onClick={() => askConfirmation({
                 title: "Delete source?",
                 description: `Delete "${selected.name}" and all its cached changes, shelf items, and notes. This cannot be undone.${dirty ? " Unsaved edits to this source draft will also be discarded." : ""}`,
                 confirmLabel: "Delete source",
@@ -491,15 +491,15 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                 }, true),
               })}>Delete source</button>
             </div> : null}
-          </> : <div className="rounded-2xl border border-dashed border-stone-950/25 p-5 text-sm leading-6">
-            <p className="font-serif text-xl font-black">Follow a link, not a preset.</p>
+          </> : <div className="rounded border-2 border-dashed border-line p-5 text-sm leading-6">
+            <p className="text-xl font-extrabold">Follow a link, not a preset.</p>
             <p className="mt-2">GitHub sources use releases, or one card per commit when no releases exist. Website links reveal advertised RSS/Atom feeds.</p>
-            <p className="mt-2 text-stone-600">Discovery and preview save nothing. Select or create a profile when you are ready to save.</p>
+            <p className="mt-2 text-muted">Discovery and preview save nothing. Select or create a profile when you are ready to save.</p>
           </div>}
         </section>
       </div>
-      <details id="source-profiles" open={profilesOpen} onToggle={(event) => setProfilesOpen(event.currentTarget.open)} className="mt-5 border-t border-stone-950/20 pt-4">
-        <summary className="cursor-pointer font-serif text-xl font-black">Manage profiles</summary>
+      <details id="source-profiles" open={profilesOpen} onToggle={(event) => setProfilesOpen(event.currentTarget.open)} className="mt-5 border-t-2 border-raised pt-4">
+        <summary className="cursor-pointer text-xl font-extrabold">Manage profiles</summary>
         <fieldset disabled={Boolean(busy)} className="mt-4 min-w-0">
           {profiles.length === 0 ? <p className="mb-3 text-sm">No profiles yet. Discovery and preview work without one. Create a profile here when you want to save.</p> : null}
           <div className="grid gap-4 md:grid-cols-2">
@@ -527,7 +527,7 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                   setMessage("Profile renamed.");
                   await sync();
                 }, true)}>Rename</button>
-                <button className="editor-button text-red-900" onClick={() => askConfirmation({
+                <button className="editor-button text-error-fg" onClick={() => askConfirmation({
                   title: "Delete profile?",
                   description: `Delete profile "${managedProfile}" and all its sources, cached changes, shelf items, and notes. This cannot be undone. The current source draft stays in the editor.`,
                   confirmLabel: "Delete profile",
@@ -550,8 +550,8 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
         </fieldset>
       </details>
       {draft ? <footer className="editor-actions" aria-label="Source actions">
-        <p className="mb-2 text-xs text-stone-600" role="status">{busy ? `${busy}...` : error || message || (draft.source.enabled ? "Save and fetch caches the last 30 days. Save only does not fetch." : "Disabled source: Save only. Enable it before a fetch.")}</p>
-        {saveBlocked && !busy ? <p id="source-save-blocked" className="mb-2 text-xs text-stone-600">{saveBlocked}</p> : null}
+        <p className="mb-2 text-xs text-muted" role="status">{busy ? `${busy}...` : error || message || (draft.source.enabled ? "Save and fetch caches the last 30 days. Save only does not fetch." : "Disabled source: Save only. Enable it before a fetch.")}</p>
+        {saveBlocked && !busy ? <p id="source-save-blocked" className="mb-2 text-xs text-muted">{saveBlocked}</p> : null}
         <div className="flex flex-wrap gap-2">
           <button type="submit" form="source-draft" className="editor-button editor-primary" aria-describedby={saveBlocked && !busy ? "source-save-blocked" : undefined} disabled={Boolean(busy) || !ready || Boolean(saveBlocked)}>{draft.source.enabled ? "Save and fetch" : "Save only (disabled)"}</button>
           {draft.source.enabled ? <button type="button" className="editor-button" aria-describedby={saveBlocked && !busy ? "source-save-blocked" : undefined} disabled={Boolean(busy) || !ready || Boolean(saveBlocked)} onClick={() => save(false)}>Save only</button> : null}
@@ -575,8 +575,8 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
           }
         }}>
         {confirmation ? <>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-stone-500">Edition workshop</p>
-          <h3 id="editor-confirmation-title" className="mt-2 font-serif text-2xl font-black">{confirmation.title}</h3>
+          <p className="text-xs font-extrabold uppercase tracking-[0.06em] text-muted">Edition workshop</p>
+          <h3 id="editor-confirmation-title" className="mt-2 text-2xl font-extrabold">{confirmation.title}</h3>
           <p id="editor-confirmation-description" className="my-4 text-sm leading-6">{confirmation.description}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <button ref={cancelConfirmation} type="button" className="editor-button" disabled={Boolean(busy)} onClick={() => finishConfirmation(false)}>{confirmation.confirmLabel === "Discard changes" ? "Keep editing" : "Cancel"}</button>

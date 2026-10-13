@@ -300,7 +300,7 @@ export default function App() {
     };
   }, []);
 
-  return <div className="min-h-screen bg-[#ece7db] px-1 py-2 text-stone-950 sm:px-5 sm:py-4 lg:px-8">
+  return <div className="min-h-screen px-1 py-2 text-ink sm:px-5 sm:py-4 lg:px-8">
     {identity ? <>
       <AccountArea key={`${identity.id}:${identity.authenticated}`} identity={identity} onReload={() => reload()} onEdit={() => setEditorOpen(true)} />
       <Feed key={`${identity.id}:${identity.authenticated}`} owner={identity.id} profiles={profiles} revision={revision} onEdit={() => setEditorOpen(true)} />
@@ -319,7 +319,7 @@ export default function App() {
         window.scrollTo({ top: 0 });
       }} /> : null}
     </> : <section className="mx-auto max-w-3xl py-10">
-      <h1 className="mb-5 font-serif text-4xl font-black">changelorg.</h1>
+      <h1 className="mb-5 text-4xl font-extrabold">changelorg<span className="text-accent">.</span></h1>
       {error ? <>
         <ErrorNote message={error} />
         <p className="mt-4 text-sm leading-6">Continue anonymously to clear an expired sign-in session. This works even when GitHub sign-in is unavailable. Your anonymous identifier and data stay intact.</p>
@@ -328,7 +328,7 @@ export default function App() {
           <button className="editor-button" disabled={resetPending} onClick={() => void reload()}>Retry account access</button>
           <a className="text-sm underline underline-offset-4" href="/auth/start?rd=/" aria-disabled={resetPending} onClick={(event) => { if (resetPending) event.preventDefault(); }}>Sign in with GitHub</a>
         </div>
-        <p className="mb-4 text-xs text-stone-600">GitHub sign-in requires authentication to be enabled on this server. Session recovery does not.</p>
+        <p className="mb-4 text-xs text-muted">GitHub sign-in requires authentication to be enabled on this server. Session recovery does not.</p>
         {resetPending ? <p role="status" className="mb-4 text-sm">Session reset in progress. Keep this page open.</p> : null}
         {resetError ? <ErrorNote message={resetError} /> : null}
       </> : <p role="status">Load your account and profiles...</p>}
@@ -724,8 +724,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
   });
 
   return (
-    <main className="overflow-x-hidden text-stone-950 [overflow-anchor:none]">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(120,53,15,0.16),transparent_32rem),linear-gradient(90deg,rgba(28,25,23,0.045)_1px,transparent_1px),linear-gradient(rgba(28,25,23,0.045)_1px,transparent_1px)] bg-[length:auto,44px_44px,44px_44px]" />
+    <main className="overflow-x-hidden text-ink [overflow-anchor:none]">
 
       <section className="relative mx-auto grid max-w-7xl gap-3 sm:gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
         <ControlPanel
@@ -751,13 +750,13 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
         <div className="flex min-w-0 flex-col gap-3 sm:gap-5">
           {error ? <div><ErrorNote message={error} /><button className="editor-button mt-2" disabled={pending} onClick={() => { clearReadCache(); setRetry((value) => value + 1); }}>Reload desk from server</button></div> : null}
           {pending ? <p role="status" className="sr-only">Save in progress...</p> : null}
-          {!isLoading && sourceCount === 0 ? <section className="rounded-[2rem] border border-stone-950 bg-[#fffaf0] p-6">
-            <h2 className="font-serif text-3xl font-black">Build your edition</h2>
+          {!isLoading && sourceCount === 0 ? <section className="rounded border-2 border-line bg-surface p-6 shadow-hard">
+            <h2 className="text-3xl font-extrabold">Build your edition</h2>
             <p className="my-3 text-sm leading-6">{profiles.length === 0 ? "Paste a website or GitHub link to discover and preview a source. Create a profile when you want to save." : "This profile has no active sources. Add or enable a source, then fetch its latest changes."}</p>
             <button className="editor-button editor-primary" onClick={onEdit}>{profiles.length === 0 ? "Find your first source" : "Add or manage sources"}</button>
           </section> : null}
 
-          <section data-queue="shelf" className="rounded-2xl border border-amber-900/30 bg-[#f9d978] px-1 py-3 text-stone-950 shadow-[8px_8px_0_rgba(120,53,15,0.18)] sm:rounded-[2rem] sm:p-5">
+          <section data-queue="shelf" className="rounded border-2 border-line bg-select px-2 py-3 text-select-fg sm:p-5">
             <QueueHeader
               count={shelfChanges.length}
               icon={<BookmarkCheck className="h-4 w-4" />}
@@ -779,7 +778,7 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
             )}
           </section>
 
-          <section data-queue="desk" className="rounded-2xl border border-stone-950/15 bg-[#fffdf7]/90 px-1 py-3 shadow-[0_18px_50px_rgba(41,37,36,0.12)] backdrop-blur sm:rounded-[2rem] sm:p-5">
+          <section data-queue="desk" className="rounded border-2 border-line bg-raised px-2 py-3 sm:p-5">
             <QueueHeader count={deskChanges.length} icon={<Newspaper className="h-4 w-4" />} swipeHint="Swipe left to clear, right to shelf." title="The desk" tone="desk">
               {isLoading ? "Load your feed..." : error ? "The feed could not load. Retry above." : sourceCount === 0 ? "Add or enable a source to fill your desk."
                 : deskChanges.length ? `${deskChanges.length} readable ${profileLabel(selectedProfile)} item${deskChanges.length === 1 ? "" : "s"} from the last ${windowLabel(feedWindow)}.`
@@ -799,25 +798,25 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
             )}
           </section>
 
-          <button className="self-end rounded-xl border border-stone-950/20 bg-[#fffaf0] px-4 py-2 text-sm font-semibold" onClick={() => shortcutDialog.current?.showModal()} type="button">
+          <button className="editor-button self-end" onClick={() => shortcutDialog.current?.showModal()} type="button">
             Keyboard shortcuts <kbd>?</kbd>
           </button>
         </div>
       </section>
 
       {lastAction ? <UndoToast label={lastAction.label} pending={pending || isLoading || needsReload.current} onUndo={onUndo} /> : null}
-      <dialog ref={clearedDialog} aria-labelledby="cleared-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-xl overflow-auto rounded-2xl bg-[#fffaf0] p-5 shadow-xl backdrop:bg-stone-950/50">
-        <div className="flex items-center justify-between gap-3"><h2 id="cleared-title" className="font-serif text-2xl font-bold">Cleared items</h2><button className="editor-button" onClick={() => clearedDialog.current?.close()}>Close</button></div>
-        <p className="my-3 text-sm text-stone-600">Current profile, window, and source filter.</p>
+      <dialog ref={clearedDialog} aria-labelledby="cleared-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-xl overflow-auto rounded border-2 border-line bg-surface p-5 text-ink shadow-hard backdrop:bg-overlay">
+        <div className="flex items-center justify-between gap-3"><h2 id="cleared-title" className="text-2xl font-extrabold">Cleared items</h2><button className="editor-button" onClick={() => clearedDialog.current?.close()}>Close</button></div>
+        <p className="my-3 text-sm text-muted">Current profile, window, and source filter.</p>
         {dismissedCount ? <button className="editor-button mb-3" disabled={pending || isLoading || needsReload.current} onClick={onRestoreCleared}>Restore all shown</button> : <p className="py-4 text-sm">No cleared items in this view.</p>}
-        {viewChanges.filter((change) => change.dismissed).map((change) => <div key={change.id} className="flex items-start justify-between gap-3 border-t border-stone-950/15 py-3"><div className="min-w-0 [overflow-wrap:anywhere]"><p className="font-semibold">{change.title}</p><p className="text-sm text-stone-600">{change.source_name}</p></div><button className="editor-button shrink-0" disabled={pending || isLoading || needsReload.current} onClick={() => void updateChangeState(change, { dismissed: false }, "Restored item")}>Restore</button></div>)}
+        {viewChanges.filter((change) => change.dismissed).map((change) => <div key={change.id} className="flex items-start justify-between gap-3 border-t-2 border-raised py-3"><div className="min-w-0 [overflow-wrap:anywhere]"><p className="font-semibold">{change.title}</p><p className="text-sm text-muted">{change.source_name}</p></div><button className="editor-button shrink-0" disabled={pending || isLoading || needsReload.current} onClick={() => void updateChangeState(change, { dismissed: false }, "Restored item")}>Restore</button></div>)}
       </dialog>
-      <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[1.75rem] border border-stone-950 bg-[#fffaf0] p-4 text-stone-950 shadow-xl backdrop:bg-stone-950/50 sm:p-6">
+      <dialog ref={shortcutDialog} aria-labelledby="shortcut-title" className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded border-2 border-line bg-surface p-4 text-ink shadow-hard backdrop:bg-overlay sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 id="shortcut-title" className="font-serif text-2xl font-black">Keyboard shortcuts</h2>
-          <button autoFocus className="rounded-xl border border-stone-950 px-3 py-2 text-sm font-bold" onClick={() => shortcutDialog.current?.close()} type="button">Close</button>
+          <h2 id="shortcut-title" className="text-2xl font-extrabold">Keyboard shortcuts</h2>
+          <button autoFocus className="editor-button" onClick={() => shortcutDialog.current?.close()} type="button">Close</button>
         </div>
-        <p className="mb-4 text-sm text-stone-600">Card actions use the focused card. Press j to select the first card. Shortcuts stay inactive in form fields.</p>
+        <p className="mb-4 text-sm text-muted">Card actions use the focused card. Press j to select the first card. Shortcuts stay inactive in form fields.</p>
         <KeyboardLegend />
       </dialog>
     </main>
@@ -825,15 +824,15 @@ function Feed({ owner, profiles, revision, onEdit }: { owner: string; profiles: 
 }
 
 function QueueHeader({ children, count, icon, title, tone }: { children: ReactNode; count: number; icon: ReactNode; swipeHint: string; title: string; tone: "shelf" | "desk" }) {
-  const muted = tone === "shelf" ? "text-amber-950/65" : "text-stone-500";
-  const body = tone === "shelf" ? "text-amber-950/80" : "text-stone-600";
+  const muted = tone === "shelf" ? "text-select-fg" : "text-muted";
+  const body = tone === "shelf" ? "text-select-fg" : "text-muted";
   return (
-    <div className={`flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${count ? "border-b pb-4" : ""} ${tone === "shelf" ? "border-amber-950/20" : "border-stone-950/15"}`}>
+    <div className={`flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${count ? "border-b-2 pb-4" : ""} ${tone === "shelf" ? "border-select-fg" : "border-line"}`}>
       <div>
-        <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] ${muted}`}>
+        <div className={`flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.12em] ${muted}`}>
           {icon}
           {title}
-          <Badge className={tone === "shelf" ? "border-amber-950/20 bg-amber-950 text-amber-50" : "border-stone-950/20 bg-stone-950 text-[#fff8e8]"}>{count}</Badge>
+          <Badge className={tone === "shelf" ? "bg-pink" : "bg-info"}>{count}</Badge>
         </div>
       </div>
       {count === 0 && tone === "desk" ? <p className={`min-w-0 max-w-md text-sm leading-6 [overflow-wrap:anywhere] ${body}`}>{children}</p> : null}
@@ -874,12 +873,12 @@ function ControlPanel({
   sort: SortKey;
   sourceCount: number;
 }) {
-  const selectClassName = "h-11 w-full min-w-0 rounded-xl border border-[#fff8e8]/15 bg-[#292520] px-2 text-base font-semibold text-[#fff8e8] outline-none transition focus:border-[#d7b56d] sm:px-3 sm:text-sm";
+  const selectClassName = "h-11 w-full min-w-0 rounded border-2 border-line bg-surface px-2 text-base font-semibold text-ink sm:px-3 sm:text-sm";
   return (
     <aside className="lg:sticky lg:top-5 lg:self-start">
-      <div className="overflow-hidden rounded-2xl border border-stone-950 bg-[#1d1a16] text-[#fff8e8] shadow-sm lg:rounded-[2rem] lg:shadow-[10px_10px_0_rgba(28,25,23,0.22)]">
+      <div className="overflow-hidden rounded border-2 border-line bg-surface text-ink shadow-hard">
 
-        <div className="grid grid-cols-4 border-b border-[#fff8e8]/15 px-2 text-center lg:grid-cols-2 lg:gap-px lg:bg-[#fff8e8]/15 lg:px-0">
+        <div className="grid grid-cols-4 gap-[2px] border-b-2 border-line bg-line text-center lg:grid-cols-2">
           <DeskStat label="desk" value={queueCount} />
           <DeskStat label="shelf" value={savedCount} />
           <DeskStat label="sources" value={sourceCount} onClick={onEdit} />
@@ -888,7 +887,7 @@ function ControlPanel({
 
         <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-1 lg:gap-4 lg:p-6">
           <label className="col-span-2 block min-w-0 lg:col-span-1">
-            <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
+            <span className="mb-2 flex items-center gap-1 text-xs font-extrabold uppercase tracking-[0.06em] text-muted sm:gap-2">
               <Inbox className="h-4 w-4" />
               Profile
             </span>
@@ -903,7 +902,7 @@ function ControlPanel({
           </label>
 
           <label className="block min-w-0">
-            <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
+            <span className="mb-2 flex items-center gap-1 text-xs font-extrabold uppercase tracking-[0.06em] text-muted sm:gap-2">
               <CalendarDays className="h-4 w-4" />
               Window
             </span>
@@ -917,7 +916,7 @@ function ControlPanel({
           </label>
 
           <label className="block min-w-0">
-            <span className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-[#b8af9d] sm:gap-2 sm:tracking-[0.24em]">
+            <span className="mb-2 flex items-center gap-1 text-xs font-extrabold uppercase tracking-[0.06em] text-muted sm:gap-2">
               <LibraryBig className="h-4 w-4" />
               Order
             </span>
@@ -932,10 +931,10 @@ function ControlPanel({
 
 
           {sourceFilter ? (
-            <div className="col-span-2 rounded-2xl border border-[#f8df9d]/25 bg-[#292520] p-3 lg:col-span-1">
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-[#b8af9d]">Source filter</div>
-              <div className="mt-1 text-sm font-black text-[#fff8e8] [overflow-wrap:anywhere]">{sourceFilter.name}</div>
-              <button className="mt-1 inline-flex min-h-11 items-center text-sm font-black text-[#f8df9d] underline underline-offset-4" onClick={onClearSourceFilter} type="button">
+            <div className="col-span-2 rounded border-2 border-shadow bg-select p-3 text-select-fg lg:col-span-1">
+              <div className="text-xs font-extrabold uppercase tracking-[0.06em]">Source filter</div>
+              <div className="mt-1 text-sm font-extrabold [overflow-wrap:anywhere]">{sourceFilter.name}</div>
+              <button className="mt-1 inline-flex min-h-11 items-center text-sm font-extrabold underline decoration-2 underline-offset-4" onClick={onClearSourceFilter} type="button">
                 Show all sources
               </button>
             </div>
@@ -948,19 +947,19 @@ function ControlPanel({
 
 function DeskStat({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
   const content = <>
-      <div className="font-serif text-2xl font-bold leading-none text-[#f8df9d] lg:text-3xl">{value}</div>
-      <div className={`mt-1 text-xs font-medium capitalize text-[#b8af9d] lg:uppercase lg:tracking-wider ${onClick ? "underline decoration-[#b8af9d]/40 underline-offset-4" : ""}`}>{label}</div>
+      <div className="text-2xl font-extrabold leading-none text-ink lg:text-3xl">{value}</div>
+      <div className={`mt-1 text-xs font-extrabold capitalize text-muted lg:uppercase lg:tracking-[0.06em] ${onClick ? "underline decoration-accent decoration-2 underline-offset-4" : ""}`}>{label}</div>
     </>;
-  const classes = "min-w-0 bg-[#1d1a16] px-1 py-3 lg:px-3 lg:py-4";
-  return onClick ? <button type="button" className={`${classes} hover:bg-[#292520]`} onClick={onClick} aria-label={label === "sources" ? "Manage sources and profiles" : "View cleared items"}>{content}</button> : <div className={classes}>{content}</div>;
+  const classes = "min-w-0 bg-surface px-1 py-3 lg:px-3 lg:py-4";
+  return onClick ? <button type="button" className={`${classes} hover:bg-raised`} onClick={onClick} aria-label={label === "sources" ? "Manage sources and profiles" : "View cleared items"}>{content}</button> : <div className={classes}>{content}</div>;
 }
 
 function UndoToast({ label, pending, onUndo }: { label: string; pending: boolean; onUndo: () => void }) {
   return (
     <div className="fixed inset-x-0 bottom-4 z-20 flex justify-center px-3" role="status">
-      <div className="flex items-center gap-3 rounded-full border border-stone-950 bg-[#1d1a16] py-2 pl-5 pr-2 text-sm font-semibold text-[#fff8e8] shadow-[6px_6px_0_rgba(28,25,23,0.22)]">
+      <div className="flex items-center gap-3 rounded border-2 border-line bg-surface py-2 pl-5 pr-2 text-sm font-semibold text-ink shadow-hard">
         {label}
-        <button className="inline-flex h-9 items-center gap-1 rounded-full bg-[#f8df9d] px-4 font-black text-stone-950 transition-colors hover:bg-amber-300" disabled={pending} onClick={onUndo} type="button">
+        <button className="editor-button editor-primary inline-flex h-9 items-center gap-1 px-4 py-0" disabled={pending} onClick={onUndo} type="button">
           <Undo2 className="h-4 w-4" />
           Undo
         </button>
@@ -988,10 +987,10 @@ function KeyboardLegend() {
     ["?", "toggle shortcut help"],
   ];
   return (
-    <div className="grid gap-3 text-sm font-semibold text-stone-600">
+    <div className="grid gap-3 text-sm font-semibold text-muted">
       {keys.map(([key, label]) => (
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1" key={key}>
-          <kbd className="shrink-0 whitespace-nowrap rounded-md border border-stone-950/20 bg-white px-1.5 py-0.5 font-mono text-xs text-stone-800">{key}</kbd>
+          <kbd className="shrink-0 whitespace-nowrap rounded border-2 border-line bg-surface px-1.5 py-0.5 font-mono text-xs text-ink shadow-sticker">{key}</kbd>
           {label}
         </span>
       ))}
@@ -1003,13 +1002,13 @@ function LoadingState() {
   return (
     <div className="mt-5 grid gap-4">
       {[0, 1, 2].map((item) => (
-        <div className="animate-pulse rounded-[1.75rem] border border-stone-950/10 bg-stone-100 p-5" key={item}>
-          <div className="h-4 w-36 rounded bg-stone-300" />
-          <div className="mt-4 h-8 w-3/4 rounded bg-stone-300" />
+        <div className="rounded border-2 border-line bg-surface p-5" key={item}>
+          <div className="h-4 w-36 rounded bg-raised" />
+          <div className="mt-4 h-8 w-3/4 rounded bg-raised" />
           <div className="mt-5 space-y-2">
-            <div className="h-3 rounded bg-stone-200" />
-            <div className="h-3 w-11/12 rounded bg-stone-200" />
-            <div className="h-3 w-2/3 rounded bg-stone-200" />
+            <div className="h-3 rounded bg-raised" />
+            <div className="h-3 w-11/12 rounded bg-raised" />
+            <div className="h-3 w-2/3 rounded bg-raised" />
           </div>
         </div>
       ))}

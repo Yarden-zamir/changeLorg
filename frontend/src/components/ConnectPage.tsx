@@ -61,10 +61,10 @@ export function ConnectPage() {
 
   const signIn = `${apiUrl}/auth/start?rd=${encodeURIComponent(window.location.pathname + window.location.search)}`;
 
-  return <div className="min-h-screen bg-[#ece7db] px-1 py-2 text-stone-950 sm:px-5 sm:py-4 lg:px-8">
+  return <div className="min-h-screen px-1 py-2 text-ink sm:px-5 sm:py-4 lg:px-8">
     <section className="mx-auto grid max-w-2xl gap-4 py-10">
-      <h1 className="font-serif text-4xl font-black">changelorg<span className="text-amber-800">.</span></h1>
-      <h2 className="font-serif text-2xl font-bold">Agent access</h2>
+      <h1 className="text-4xl font-extrabold">changelorg<span className="text-accent">.</span></h1>
+      <h2 className="text-2xl font-extrabold">Agent access</h2>
       {!identity ? (error ? <>
         <ErrorNote message={error} />
         <a className="editor-button editor-primary w-fit" href={signIn}>Sign in with GitHub again</a>
@@ -73,18 +73,18 @@ export function ConnectPage() {
           <p className="leading-7">An agent asks for read access to your changelorg account. Sign in with GitHub to review the request.</p>
           {identity.auth_enabled
             ? <a className="editor-button editor-primary w-fit" href={signIn}>Sign in with GitHub</a>
-            : <p className="text-stone-600">GitHub sign-in is not available on this server, so agents cannot get access here.</p>}
+            : <p className="text-muted">GitHub sign-in is not available on this server, so agents cannot get access here.</p>}
         </>
           : !code ? <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); submitCode(); }}>
             <label className="grid gap-2 font-semibold">Enter the code that your agent shows
-              <input className="rounded-xl border border-stone-950/25 bg-[#fffaf0] px-3 py-2 font-mono text-lg uppercase tracking-widest" autoComplete="off" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="XXXX-XXXX" />
+              <input className="rounded border-2 border-line bg-surface px-3 py-2 font-mono text-lg uppercase tracking-widest text-ink" autoComplete="off" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="XXXX-XXXX" />
             </label>
             <button className="editor-button editor-primary w-fit" type="submit">Continue</button>
           </form>
             : <>
-              {request ? <div className="grid gap-3 rounded-2xl border border-stone-950/20 bg-[#fffaf0] p-5 shadow-sm">
+              {request ? <div className="grid gap-3 rounded border-2 border-line bg-surface p-5 shadow-hard">
                 <p className="text-lg leading-7"><strong>{request.client_name}</strong> asks to {request.scope === "write" ? "read and change" : "read"} your changelorg account.</p>
-                <p className="font-mono text-3xl font-bold tracking-widest">{request.user_code}</p>
+                <p className="w-fit rounded border-2 border-shadow bg-select px-3 py-1 font-mono text-3xl font-semibold tracking-widest text-select-fg shadow-hard-sm">{request.user_code}</p>
                 <p className="text-sm leading-6">Compare this code with the code in your agent's output. Approve only a request that you started yourself. Another person can send you a link like this.</p>
                 <ul className="list-disc pl-5 text-sm leading-6">
                   <li>It can read your profiles, sources, changes, shelf flags, and notes.</li>
@@ -93,9 +93,9 @@ export function ConnectPage() {
                     : <li>It cannot change or delete anything.</li>}
                   <li>Access ends 90 days after the agent last uses it. You can revoke it earlier in the GitHub account menu.</li>
                 </ul>
-                <p className="text-xs text-stone-600">Signed in as {identity.login}. This request expires at {new Date(request.expires_at).toLocaleTimeString()}.</p>
+                <p className="text-xs text-muted">Signed in as {identity.login}. This request expires at {new Date(request.expires_at).toLocaleTimeString()}.</p>
                 {request.status === "pending" ? <div className="flex flex-wrap gap-3">
-                  <button className="editor-button editor-primary" disabled={pending} onClick={() => void decide("approve")}>Approve</button>
+                  <button className="editor-button editor-send" disabled={pending} onClick={() => void decide("approve")}>Approve</button>
                   <button className="editor-button" disabled={pending} onClick={() => void decide("deny")}>Deny</button>
                 </div> : <p role="status" className="font-semibold">{request.status === "approved"
                   ? "Approved. Return to your agent. It continues on its own."
