@@ -43,7 +43,7 @@ export function ConnectedAgents({ owner }: { owner: string }) {
         : tokens.map((token) => <div key={token.id} className="flex items-start justify-between gap-2 border-b border-stone-950/15 pb-2">
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <p className="font-semibold">{token.name}</p>
-            <p className="text-xs text-stone-600">Read only. Last used {new Date(token.last_used_at).toLocaleDateString()}. Ends {new Date(token.expires_at).toLocaleDateString()} without use.</p>
+            <p className="text-xs text-stone-600">{token.scope === "write" ? "Read and write" : "Read only"}. Last used {new Date(token.last_used_at).toLocaleDateString()}. Ends {new Date(token.expires_at).toLocaleDateString()} without use.</p>
           </div>
           <button className="editor-button shrink-0" disabled={busy} onClick={() => void revoke(token)}>Revoke</button>
         </div>)}

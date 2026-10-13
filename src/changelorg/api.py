@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from changelorg import store
 from changelorg.agent_access import router as agent_router
-from changelorg.auth import Identity, request_identity
+from changelorg.auth import Identity, browser_identity, request_identity
 from changelorg.discovery import discover_sources, normalize_discovery_url
 from changelorg.enrichment import PROFILES
 from changelorg.models import (
@@ -47,6 +47,8 @@ from changelorg.service import generate_changes
 from changelorg.timeutils import parse_window
 
 CurrentIdentity = Annotated[Identity, Depends(request_identity)]
+# Imports copy browser data, so they need a browser, never an agent token.
+BrowserIdentity = Annotated[Identity, Depends(browser_identity)]
 
 
 class RestoreRequest(BaseModel):
@@ -247,7 +249,7 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/me/import")
-    def import_anonymous(identity: CurrentIdentity) -> dict[str, int]:
+    def import_anonymous(identity: BrowserIdentity) -> dict[str, int]:
         if not identity.authenticated or identity.anonymous_owner is None:
             raise HTTPException(
                 403, "Import requires a GitHub account and browser identity"
@@ -256,7 +258,7 @@ def create_app() -> FastAPI:
 
     @app.post("/me/import-state")
     def import_browser_state(
-        body: BrowserStateImport, identity: CurrentIdentity
+        body: BrowserStateImport, identity: BrowserIdentity
     ) -> dict[str, int]:
         return store.import_browser_state(body.state, identity.owner_id)
 

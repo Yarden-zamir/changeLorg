@@ -44,7 +44,9 @@ def test_server_origin_rejects_other_values(value: str) -> None:
 def test_credentials_file_is_private(tmp_path: Path) -> None:
     path = tmp_path / "config" / "credentials.json"
     assert remote.load_credentials(path) == remote.Credentials()
-    saved = remote.SavedToken(token="clg_x", owner_id="github:1", login="me", name="cli", saved_at="2026-10-13T08:00:00Z")
+    saved = remote.SavedToken(
+        token="clg_x", scope="read", owner_id="github:1", login="me", name="cli", saved_at="2026-10-13T08:00:00Z"
+    )
     remote.save_credentials(remote.Credentials(servers={SERVER: saved}), path)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert remote.load_credentials(path).servers[SERVER] == saved
@@ -98,7 +100,7 @@ def test_login_status_api_and_logout(cli: dict) -> None:
 
     status = runner.invoke(app, ["auth", "status", "--server", SERVER])
     assert status.exit_code == 0, status.output
-    assert "as octo (github:12345)" in status.output
+    assert "as octo (github:12345) with read only access" in status.output
 
     profiles = runner.invoke(app, ["api", "/profiles", "--server", SERVER])
     assert profiles.exit_code == 0, profiles.output
@@ -131,3 +133,29 @@ def test_status_reports_a_revoked_token(cli: dict, browser: TestClient) -> None:
     result = runner.invoke(app, ["auth", "status", "--server", SERVER])
     assert result.exit_code == 1
     assert "expired or revoked" in result.output
+
+
+def test_write_login_and_api_methods(cli: dict) -> None:
+    runner = CliRunner()
+    login = runner.invoke(app, ["auth", "login", "--server", SERVER, "--write"])
+    assert login.exit_code == 0, login.output
+    assert "read and write access" in login.output
+    assert json.loads(cli["path"].read_text())["servers"][SERVER]["scope"] == "write"
+
+    created = runner.invoke(app, ["api", "-X", "POST", "/profiles", "-d", '{"name": "from cli"}', "--server", SERVER])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["name"] == "from cli"
+    deleted = runner.invoke(app, ["api", "-X", "DELETE", "/profiles/from%20cli", "--server", SERVER])
+    assert deleted.exit_code == 0, deleted.output
+    assert runner.invoke(app, ["api", "-X", "PUT", "/profiles", "--server", SERVER]).exit_code == 1
+    bad_json = runner.invoke(app, ["api", "-X", "POST", "/profiles", "-d", "{name", "--server", SERVER])
+    assert bad_json.exit_code == 1
+    assert "valid JSON" in bad_json.output
+
+
+def test_read_token_reports_write_refusal(cli: dict) -> None:
+    runner = CliRunner()
+    assert runner.invoke(app, ["auth", "login", "--server", SERVER]).exit_code == 0
+    refused = runner.invoke(app, ["api", "-X", "POST", "/profiles", "-d", '{"name": "x"}', "--server", SERVER])
+    assert refused.exit_code == 1
+    assert "--write" in refused.output

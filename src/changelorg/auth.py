@@ -10,7 +10,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from changelorg import store
-from changelorg.models import utc_now
+from changelorg.models import AgentScope, utc_now
 
 AGENT_TOKEN_PREFIX = "clg_"
 
@@ -26,6 +26,7 @@ class Identity:
     login: str | None
     anonymous_owner: str | None
     agent_token_id: int | None = None
+    agent_scope: AgentScope | None = None
 
     @property
     def authenticated(self) -> bool:
@@ -80,7 +81,7 @@ def _agent_identity(request: Request) -> Identity | None:
     expected = request.headers.get("X-Changelorg-Owner")
     if expected is not None and expected != agent.owner_id:
         raise HTTPException(412, "The active account changed")
-    return Identity(agent.owner_id, agent.login, None, agent.id)
+    return Identity(agent.owner_id, agent.login, None, agent.id, agent.scope)
 
 
 def agent_identity(request: Request) -> Identity:
@@ -91,11 +92,16 @@ def agent_identity(request: Request) -> Identity:
     return agent
 
 
+def browser_identity(request: Request) -> Identity:
+    """Identity for routes that only a browser may use, such as imports. Agent tokens get 403."""
+    if _bearer_agent_token(request) is not None:
+        raise HTTPException(403, "Agent tokens cannot use this route")
+    return request_identity(request)
+
+
 def github_browser_identity(request: Request) -> Identity:
     """Identity for agent approval and token management: a GitHub browser session, never a token."""
-    if _bearer_agent_token(request) is not None:
-        raise HTTPException(403, "Agent tokens cannot manage agent access")
-    identity = request_identity(request)
+    identity = browser_identity(request)
     if not identity.authenticated:
         raise HTTPException(403, "Sign in with GitHub to manage agent access")
     return identity
@@ -104,8 +110,8 @@ def github_browser_identity(request: Request) -> Identity:
 def request_identity(request: Request) -> Identity:
     agent = _agent_identity(request)
     if agent is not None:
-        if request.method not in {"GET", "HEAD"}:
-            raise HTTPException(403, "Agent tokens are read-only")
+        if request.method not in {"GET", "HEAD"} and agent.agent_scope != "write":
+            raise HTTPException(403, "This agent token can only read. Run changelorg auth login --write for write access.")
         return agent
     anonymous = anonymous_owner(request.headers.get("X-Anonymous-Token"))
     login = None

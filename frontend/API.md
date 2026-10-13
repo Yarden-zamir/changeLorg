@@ -90,7 +90,7 @@ type ChangeState = { dismissed?: boolean; saved?: boolean; note?: string };
 type AgentRequest = {
   user_code: string;
   client_name: string;
-  scope: "read";
+  scope: "read" | "write";
   status: "pending" | "approved" | "denied";
   created_at: string;
   expires_at: string;
@@ -98,7 +98,7 @@ type AgentRequest = {
 type AgentToken = {
   id: number;
   name: string;
-  scope: "read";
+  scope: "read" | "write";
   created_at: string;
   last_used_at: string;
   expires_at: string;
@@ -154,11 +154,11 @@ An active URL `source` filter adds `source_id={id}` to `GET /changes`. The serve
 
 1. The `/connect` path renders the approval page instead of the feed. The `code` query parameter carries the user code; without it, the page asks for the code.
 2. Without a GitHub session, the page explains the request and links to `/auth/start?rd=` with the encoded `/connect` address. It never approves for an anonymous owner.
-3. With a GitHub session, the page loads `AgentRequest` and shows the client name, the user code, the expiry time, and the read access in plain words.
+3. With a GitHub session, the page loads `AgentRequest` and shows the client name, the user code, the expiry time, and the requested access in plain words. Write access states that the agent can add, change, and delete data.
 4. The page tells the user to compare the code with the agent output and to approve only a request that the user started.
 5. Approve and Deny require an explicit click. Controls block duplicate decisions while a decision is pending.
 6. After a decision, the page states the result and tells the user to return to the agent. A `404` states that the code is unknown or expired.
-7. The GitHub account menu lists connected agents from `GET /agent/tokens` with name, last use, and expiry. Revoke requires confirmation and then reloads the list.
+7. The GitHub account menu lists connected agents from `GET /agent/tokens` with name, access, last use, and expiry. Revoke requires confirmation and then reloads the list.
 
 ## Source Discovery
 

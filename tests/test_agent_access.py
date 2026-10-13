@@ -318,3 +318,45 @@ def test_connect_path_serves_the_frontend(api_env: None, tmp_path: Path, monkeyp
         assert page.status_code == 200
         assert page.headers["content-type"].startswith("text/html")
         assert page.text == client.get("/").text
+
+
+def test_write_tokens_change_data_but_never_manage_access(browser: TestClient, agent: TestClient, clock: Clock) -> None:
+    device = agent.post("/agent/device", json={"client_name": "writer", "scope": "write"}, headers=MUTATION).json()
+    with github_session(browser) as headers:
+        shown = browser.get(f"/agent/device/{device['user_code']}", headers=headers).json()
+        assert shown["scope"] == "write"
+        browser.post(f"/agent/device/{device['user_code']}/approve", headers=headers)
+    clock.advance(seconds=5)
+    grant = poll(agent, device).json()
+    assert grant["scope"] == "write"
+    write = {**bearer(grant["access_token"]), **MUTATION}
+
+    assert agent.post("/profiles", json={"name": "agent made"}, headers=write).status_code == 201
+    change = seed_change("github:12345", "games")
+    saved = agent.patch(f"/changes/{change.id}", json={"saved": True, "note": "from agent"}, headers=write)
+    assert (saved.status_code, saved.json()["saved"], saved.json()["note"]) == (200, True, "from agent")
+    assert agent.delete("/profiles/agent%20made", headers=write).status_code in {200, 204}
+    assert [profile.name for profile in store.list_profiles("github:12345")] == ["games"]
+    # Mutations still need the request header, like every other client.
+    assert agent.post("/profiles", json={"name": "x"}, headers=bearer(grant["access_token"])).status_code == 403
+    for method, path, body in [
+        ("POST", "/me/import", None),
+        ("POST", "/me/import-state", {"state": {}}),
+        ("GET", "/agent/tokens", None),
+        ("POST", f"/agent/device/{start(agent)['user_code']}/approve", None),
+    ]:
+        assert agent.request(method, path, json=body, headers=write).status_code == 403
+
+    read_token = approved_token(browser, agent, clock)
+    denied = agent.patch(f"/changes/{change.id}", json={"saved": False}, headers={**bearer(read_token), **MUTATION})
+    assert denied.status_code == 403
+    assert "--write" in denied.json()["detail"]
+    with github_session(browser) as headers:
+        scopes = {token["name"]: token["scope"] for token in browser.get("/agent/tokens", headers=headers).json()}
+    assert scopes == {"writer": "write", "Claude on test": "read"}
+
+
+def test_device_start_rejects_unknown_scopes(agent: TestClient) -> None:
+    for scope in ["admin", "", "READ"]:
+        response = agent.post("/agent/device", json={"client_name": "agent", "scope": scope}, headers=MUTATION)
+        assert response.status_code == 422

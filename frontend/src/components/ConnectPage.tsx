@@ -83,12 +83,14 @@ export function ConnectPage() {
           </form>
             : <>
               {request ? <div className="grid gap-3 rounded-2xl border border-stone-950/20 bg-[#fffaf0] p-5 shadow-sm">
-                <p className="text-lg leading-7"><strong>{request.client_name}</strong> asks to read your changelorg account.</p>
+                <p className="text-lg leading-7"><strong>{request.client_name}</strong> asks to {request.scope === "write" ? "read and change" : "read"} your changelorg account.</p>
                 <p className="font-mono text-3xl font-bold tracking-widest">{request.user_code}</p>
                 <p className="text-sm leading-6">Compare this code with the code in your agent's output. Approve only a request that you started yourself. Another person can send you a link like this.</p>
                 <ul className="list-disc pl-5 text-sm leading-6">
                   <li>It can read your profiles, sources, changes, shelf flags, and notes.</li>
-                  <li>It cannot change or delete anything.</li>
+                  {request.scope === "write"
+                    ? <li><strong>It can also add, change, and delete them.</strong> It cannot approve other agents or import browser data.</li>
+                    : <li>It cannot change or delete anything.</li>}
                   <li>Access ends 90 days after the agent last uses it. You can revoke it earlier in the GitHub account menu.</li>
                 </ul>
                 <p className="text-xs text-stone-600">Signed in as {identity.login}. This request expires at {new Date(request.expires_at).toLocaleTimeString()}.</p>

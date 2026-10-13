@@ -32,6 +32,7 @@ router = APIRouter(prefix="/agent")
 
 class AgentDeviceStart(BaseModel):
     client_name: str = Field(min_length=1, max_length=100)
+    scope: AgentScope = "read"
 
     @field_validator("client_name")
     @classmethod
@@ -78,7 +79,7 @@ def start_device(body: AgentDeviceStart, request: Request) -> AgentDeviceCode:
     for _ in range(5):
         user_code = "".join(secrets.choice(USER_CODE_ALPHABET) for _ in range(USER_CODE_LENGTH))
         try:
-            created = store.create_agent_request(hash_secret(device_code), user_code, body.client_name, utc_now())
+            created = store.create_agent_request(hash_secret(device_code), user_code, body.client_name, body.scope, utc_now())
         except store.AgentCapacityError:
             raise HTTPException(429, "Too many agent requests wait for approval. Retry later.") from None
         if created is not None:

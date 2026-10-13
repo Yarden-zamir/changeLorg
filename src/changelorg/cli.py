@@ -241,6 +241,10 @@ def _print_changes(changes: list[Change], title: str) -> None:
     console.print(table)
 
 
+def _access(scope: remote.Scope) -> str:
+    return "read and write" if scope == "write" else "read only"
+
+
 def _remote_failure(message: str) -> NoReturn:
     typer.echo(message, err=True)
     raise typer.Exit(1)
@@ -250,27 +254,34 @@ def _remote_failure(message: str) -> NoReturn:
 def auth_login(
     server: ServerOption = None,
     name: Annotated[str | None, typer.Option("--name", help="Client name on the approval page.")] = None,
+    write: Annotated[bool, typer.Option("--write", help="Ask for read and write access instead of read only.")] = False,
 ) -> None:
-    """Ask for approval in the browser, then save a read-only token."""
+    """Ask for approval in the browser, then save the token."""
     client_name = (name or f"changelorg CLI on {socket.gethostname()}")[:100]
+    scope: remote.Scope = "write" if write else "read"
     try:
         origin = remote.server_origin(server)
         credentials = remote.load_credentials()
         with remote.client(origin) as http:
-            device = remote.start_login(http, client_name)
+            device = remote.start_login(http, client_name, scope)
             typer.echo(f"Open this link in your browser: {device.verification_uri_complete}")
-            typer.echo(f"Check that the page shows the code {device.user_code}, then approve.")
+            typer.echo(f"Check that the page shows the code {device.user_code} and {_access(scope)} access, then approve.")
             typer.echo(f"Waiting for approval. The link expires in {device.expires_in // 60} minutes.")
             grant = remote.wait_for_token(http, device)
         credentials.servers[origin] = remote.SavedToken(
-            token=grant.access_token, owner_id=grant.owner_id, login=grant.login, name=client_name, saved_at=utc_now()
+            token=grant.access_token,
+            scope=grant.scope,
+            owner_id=grant.owner_id,
+            login=grant.login,
+            name=client_name,
+            saved_at=utc_now(),
         )
         path = remote.save_credentials(credentials)
     except remote.RemoteError as exc:
         _remote_failure(str(exc))
     except httpx.HTTPError:
         _remote_failure("Cannot reach the server. Check the connection and the --server value.")
-    typer.echo(f"Approved for {grant.login} ({grant.owner_id}). The token is saved in {path}.")
+    typer.echo(f"Approved for {grant.login} ({grant.owner_id}) with {_access(grant.scope)} access. The token is saved in {path}.")
 
 
 @auth_app.command("status")
@@ -282,14 +293,14 @@ def auth_status(server: ServerOption = None) -> None:
         if saved is None:
             _remote_failure(f"Not signed in to {origin}. Run changelorg auth login.")
         with remote.client(origin) as http:
-            identity = remote.get_json(http, saved.token, "/me")
+            identity = remote.request_json(http, saved.token, "/me")
     except remote.RemoteError as exc:
         _remote_failure(str(exc))
     except httpx.HTTPError:
         _remote_failure("Cannot reach the server. Check the connection and the --server value.")
     if not isinstance(identity, dict) or identity.get("id") != saved.owner_id:
         _remote_failure("The server returned a different account for the saved token. Run changelorg auth login.")
-    typer.echo(f"Signed in to {origin} as {saved.login} ({saved.owner_id}).")
+    typer.echo(f"Signed in to {origin} as {saved.login} ({saved.owner_id}) with {_access(saved.scope)} access.")
 
 
 @auth_app.command("logout")
@@ -317,17 +328,29 @@ def auth_logout(server: ServerOption = None) -> None:
 def api_get(
     path: Annotated[str, typer.Argument(help="Server path, for example '/changes?profile=dev&since=10d'.")],
     server: ServerOption = None,
+    method: Annotated[str, typer.Option("--method", "-X", help="GET, POST, PATCH, or DELETE.")] = "GET",
+    data: Annotated[str | None, typer.Option("--data", "-d", help="JSON request body.")] = None,
 ) -> None:
-    """Send an authenticated GET to the server and print the JSON response."""
+    """Send an authenticated request to the server and print the JSON response."""
+    verb = method.upper()
+    if verb not in {"GET", "POST", "PATCH", "DELETE"}:
+        _remote_failure("The method must be GET, POST, PATCH, or DELETE.")
+    try:
+        body = None if data is None else json.loads(data)
+    except json.JSONDecodeError:
+        _remote_failure("--data must be valid JSON.")
     try:
         origin = remote.server_origin(server)
         saved = remote.load_credentials().servers.get(origin)
         if saved is None:
             _remote_failure(f"Not signed in to {origin}. Run changelorg auth login.")
         with remote.client(origin) as http:
-            value = remote.get_json(http, saved.token, path)
+            value = remote.request_json(http, saved.token, path, method=verb, body=body)
     except remote.RemoteError as exc:
         _remote_failure(str(exc))
     except httpx.HTTPError:
         _remote_failure("Cannot reach the server. Check the connection and the --server value.")
+    if value is None:
+        typer.echo("Done. The server returned no content.")
+        return
     _dump_json(value)

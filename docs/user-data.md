@@ -130,7 +130,7 @@ This migration is irreversible without an external copy. A SQLite-only release c
 
 Agents and scripts read account data with an agent token. The device flow of RFC 8628 issues the token after an explicit approval in a signed-in browser.
 
-1. `POST /agent/device` starts a request and needs no identity. The body names the client in 1 to 100 characters.
+1. `POST /agent/device` starts a request and needs no identity. The body names the client in 1 to 100 characters and asks for the scope `read` (default) or `write`.
 2. The response contains a secret `device_code`, a `user_code` in the form `XXXX-XXXX`, `verification_uri`, `verification_uri_complete`, `expires_in`, and `interval`.
 3. A request expires 10 minutes after creation. At most 100 unexpired requests wait at one time; more requests return `429`.
 4. User codes use 8 characters from `BCDFGHJKLMNPQRSTVWXZ`. Code input ignores case, spaces, and hyphens.
@@ -143,7 +143,7 @@ Agents and scripts read account data with an agent token. The device flow of RFC
 11. The agent polls `POST /agent/token` with the device code, no faster than `interval` seconds. Pending and failed polls return HTTP `400` with an RFC 8628 `error` value: `authorization_pending`, `slow_down`, `access_denied`, `expired_token`, or `invalid_grant`.
 12. After approval, the next poll returns the token once and deletes the request. Later polls with that device code return `invalid_grant`.
 13. A token is `clg_` plus 43 URL-safe characters from 32 random bytes. The server stores its SHA-256 hash, owner, GitHub login, client name, scope, creation time, and last use time.
-14. The only scope is `read`. Token requests can use `GET` routes for the token owner. Other methods return `403`, except `DELETE /agent/token`, which revokes the token of that request.
+14. A `read` token can use `GET` routes for the token owner. A `write` token can also use `POST`, `PATCH`, and `DELETE` routes for the owner's profiles, sources, and changes. Other requests return `403`, except `DELETE /agent/token`, which revokes the token of that request. No token can use the import routes or the agent approval and token management routes.
 15. Agents send `Authorization: Bearer clg_...`. The server checks this token before cookies. Other `Authorization` values grant nothing and leave the browser rules unchanged.
 16. A request with an agent token and also a session cookie or `X-Anonymous-Token` returns `400`.
 17. An unknown, revoked, or expired agent token returns `401`. The server never falls back to another identity.

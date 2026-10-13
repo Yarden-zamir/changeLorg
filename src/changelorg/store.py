@@ -25,6 +25,7 @@ from changelorg.models import (
     DEFAULT_OWNER_ID,
     AgentPollError,
     AgentRequest,
+    AgentScope,
     AgentToken,
     Change,
     ChangeInput,
@@ -749,7 +750,12 @@ def _agent_request_from_row(row: dict[str, Any]) -> AgentRequest:
 
 
 def create_agent_request(
-    device_code_hash: str, user_code: str, client_name: str, now: datetime, db_path: Path | None = None
+    device_code_hash: str,
+    user_code: str,
+    client_name: str,
+    scope: AgentScope,
+    now: datetime,
+    db_path: Path | None = None,
 ) -> AgentRequest | None:
     """Store a new device request. Return None when the user code is already in use."""
     with _transaction(db_path) as connection:
@@ -764,9 +770,9 @@ def create_agent_request(
             connection.execute(
                 """
             INSERT INTO agent_requests (device_code_hash, user_code, client_name, scope, created_at, expires_at)
-            VALUES (?, ?, ?, 'read', ?, ?) RETURNING *
+            VALUES (?, ?, ?, ?, ?, ?) RETURNING *
         """,
-                [device_code_hash, user_code, client_name, now, now + AGENT_REQUEST_TTL],
+                [device_code_hash, user_code, client_name, scope, now, now + AGENT_REQUEST_TTL],
             )
         )
         return _agent_request_from_row(rows[0])

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 DEFAULT_OWNER_ID = "github:8178413"
 
 # Agent access values: docs/user-data.md "Agent Access".
-type AgentScope = Literal["read"]
+type AgentScope = Literal["read", "write"]
 AGENT_REQUEST_TTL = timedelta(minutes=10)
 AGENT_POLL_INTERVAL_SECONDS = 5
 AGENT_MAX_PENDING_REQUESTS = 100

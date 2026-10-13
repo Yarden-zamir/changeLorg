@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field, ValidationError
 from changelorg.config import credentials_path
 
 DEFAULT_SERVER = "https://changelorg.yarden-zamir.com"
+type Scope = Literal["read", "write"]
+type Method = Literal["GET", "POST", "PATCH", "DELETE"]
 _MUTATION = {"X-Changelorg-Request": "1"}
 _POLL_FAILURES = {
     "access_denied": "The request was denied in the browser.",
@@ -39,12 +41,14 @@ class DeviceCode(BaseModel):
 
 class TokenGrant(BaseModel):
     access_token: str
+    scope: Scope
     owner_id: str
     login: str
 
 
 class SavedToken(BaseModel):
     token: str
+    scope: Scope
     owner_id: str
     login: str
     name: str
@@ -104,8 +108,8 @@ def _failure(response: httpx.Response, action: str) -> RemoteError:
     return RemoteError(f"Could not {action}: {reason}")
 
 
-def start_login(http: httpx.Client, name: str) -> DeviceCode:
-    response = http.post("/agent/device", json={"client_name": name}, headers=_MUTATION)
+def start_login(http: httpx.Client, name: str, scope: Scope) -> DeviceCode:
+    response = http.post("/agent/device", json={"client_name": name, "scope": scope}, headers=_MUTATION)
     if response.status_code != 201:
         raise _failure(response, "start the approval request")
     return DeviceCode.model_validate(response.json())
@@ -141,14 +145,20 @@ def wait_for_token(
     raise RemoteError(_POLL_FAILURES["expired_token"])
 
 
-def get_json(http: httpx.Client, token: str, path: str) -> Any:
+def request_json(http: httpx.Client, token: str, path: str, *, method: Method = "GET", body: Any = None) -> Any:
+    """Send an authenticated request. Return the JSON response, or None for 204."""
     if not path.startswith("/"):
         raise RemoteError("The path must start with /, for example /changes?since=10d.")
-    response = http.get(path, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if method != "GET":
+        headers.update(_MUTATION)
+    response = http.request(method, path, headers=headers, json=body)
     if response.status_code == 401:
         raise RemoteError("The saved token is expired or revoked. Run changelorg auth login.")
     if not response.is_success:
-        raise _failure(response, f"read {path}")
+        raise _failure(response, f"{method} {path}")
+    if response.status_code == 204:
+        return None
     try:
         return response.json()
     except ValueError:

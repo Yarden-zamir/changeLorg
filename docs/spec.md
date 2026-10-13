@@ -4,7 +4,7 @@
 
 changelorg tracks source changes and generates private, time-windowed feeds for anonymous owners and GitHub accounts.
 The website displays the feed. The CLI exports structured data for analysis and summaries.
-Agents read a GitHub account's data with a read-only agent token after the owner approves them in the browser.
+Agents read, and with write access also change, a GitHub account's data with an agent token after the owner approves them in the browser.
 
 This spec defines the approved target behavior, not completed implementation or deployment verification.
 [Frontend API Contract](../frontend/API.md) defines request and response contracts. [User Data](user-data.md) defines storage, ownership, authentication, and imports.
@@ -255,10 +255,10 @@ Commands:
 - `changelorg sources disable ID`: Disable a source.
 - `changelorg changes generate --since 7d`: Fetch enabled sources, cache results, and print changes.
 - `changelorg changes list`: Print cached changes without fetching.
-- `changelorg auth login [--name TEXT]`: Start agent access, print the approval link and code, wait for approval, and save the token.
+- `changelorg auth login [--name TEXT] [--write]`: Start agent access, print the approval link and code, wait for approval, and save the token. `--write` asks for write access; the default is read only.
 - `changelorg auth status`: Check the saved token through `GET /me`. Exit `0` when the token works, else exit `1`.
 - `changelorg auth logout`: Revoke the saved token on the server, then delete it locally.
-- `changelorg api PATH`: Send an authenticated `GET` to a server path and print the JSON response.
+- `changelorg api [-X METHOD] [-d JSON] PATH`: Send an authenticated request to a server path and print the JSON response. The method defaults to `GET`.
 
 Behavior:
 
@@ -479,4 +479,4 @@ Query parameters:
 - Google sign-in. The separate Google sign-in proposal is superseded by the GitHub account contract.
 - Private social accounts, X lists/search, and complete historical social timelines.
 - A dedicated GitHub releases API plugin. Public release feeds can use RSS/Atom.
-- Agent tokens with write access, and OAuth clients registered by other parties.
+- OAuth clients registered by other parties.
