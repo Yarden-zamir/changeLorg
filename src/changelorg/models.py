@@ -1,11 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from enum import StrEnum
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 DEFAULT_OWNER_ID = "github:8178413"
+
+# Agent access values: docs/user-data.md "Agent Access".
+type AgentScope = Literal["read"]
+AGENT_REQUEST_TTL = timedelta(minutes=10)
+AGENT_POLL_INTERVAL_SECONDS = 5
+AGENT_MAX_PENDING_REQUESTS = 100
+AGENT_TOKEN_IDLE_TTL = timedelta(days=90)
+AGENT_TOKEN_USE_PRECISION = timedelta(hours=1)
+USER_CODE_ALPHABET = "BCDFGHJKLMNPQRSTVWXZ"
+USER_CODE_LENGTH = 8
 
 
 def validate_owner_id(value: str) -> str:
@@ -146,3 +157,56 @@ class GenerationResult(BaseModel):
     window: TimeWindow
     changes: list[Change]
     errors: list[GenerationError] = Field(default_factory=list)
+
+
+def normalize_user_code(value: str) -> str | None:
+    """Return the stored form of a user code, or None when the input cannot be a user code."""
+    code = value.replace("-", "").replace(" ", "").upper()
+    if len(code) != USER_CODE_LENGTH or any(char not in USER_CODE_ALPHABET for char in code):
+        return None
+    return code
+
+
+def display_user_code(code: str) -> str:
+    return f"{code[:4]}-{code[4:]}"
+
+
+class AgentRequest(BaseModel):
+    user_code: str
+    client_name: str
+    scope: AgentScope
+    status: Literal["pending", "approved", "denied"]
+    created_at: datetime
+    expires_at: datetime
+
+
+class AgentToken(BaseModel):
+    id: int
+    owner_id: str
+    login: str
+    name: str
+    scope: AgentScope
+    created_at: datetime
+    last_used_at: datetime
+
+    _validate_owner = field_validator("owner_id")(validate_owner_id)
+
+    @field_validator("created_at", "last_used_at")
+    @classmethod
+    def token_dates_are_utc(cls, value: datetime) -> datetime:
+        return ensure_utc(value)
+
+    @computed_field
+    @property
+    def expires_at(self) -> datetime:
+        return self.last_used_at + AGENT_TOKEN_IDLE_TTL
+
+
+class AgentPollError(StrEnum):
+    """RFC 8628 token endpoint errors."""
+
+    PENDING = "authorization_pending"
+    SLOW_DOWN = "slow_down"
+    DENIED = "access_denied"
+    EXPIRED = "expired_token"
+    INVALID = "invalid_grant"

@@ -5,7 +5,7 @@ It does not certify implementation, tests, migration execution, or deployment.
 
 ## Durable Storage
 
-- Embedded DuckDB 1.5.5 stores profiles, sources, changes, and change state.
+- Embedded DuckDB 1.5.5 stores profiles, sources, changes, change state, agent tokens, and pending agent requests.
 - Config and metadata use native `JSON`. Timestamps use `TIMESTAMPTZ`. Flags use `BOOLEAN`.
 - Source and change IDs use database sequences. New IDs cannot collide with migrated IDs or reuse old sequence values.
 - One process owns the database. It serializes database transactions and performs network fetches outside the database lock.
@@ -111,7 +111,7 @@ This migration is irreversible without an external copy. A SQLite-only release c
 
 - GitHub sign-in is optional through `oauth2-proxy`. Anonymous access remains available when authentication is disabled.
 - All GitHub users can sign in. No user, email, or organization allowlist applies.
-- The browser navigates to `/auth/start?rd=/` or `/auth/sign_out?rd=/` for sign-in or sign-out.
+- The browser navigates to `/auth/start?rd=/` or `/auth/sign_out?rd=/` for sign-in or sign-out. The agent access page uses `rd` with its own `/connect` address.
 - The proxy cookie uses Secure, HttpOnly, and SameSite=Lax. The app does not trust cookie contents directly.
 - With authentication enabled, the app sends the browser cookie to internal `GET http://oauth2-proxy:4180/auth/auth`.
 - Only a successful internal response supplies `X-Auth-Request-Access-Token`.
@@ -123,12 +123,42 @@ This migration is irreversible without an external copy. A SQLite-only release c
 - Reset requires the mutation header and a trusted browser origin, but no identity. It clears OAuth cookies and preserves anonymous data.
 - The app uses GitHub access tokens only in memory. It never writes them to `localStorage`, its database, or logs.
 - Public auth responses never expose access-token headers. The proxy's encrypted HttpOnly session cookie is not frontend token storage.
-- Logs must exclude raw anonymous tokens, OAuth tokens, and session cookies.
+- Logs must exclude raw anonymous tokens, OAuth tokens, agent tokens, device codes, and session cookies.
+- The proxy session cookie lasts 30 days through `--cookie-expire=720h`. Cookie refresh stays off, so the session ends 30 days after sign-in.
+
+## Agent Access
+
+Agents and scripts read account data with an agent token. The device flow of RFC 8628 issues the token after an explicit approval in a signed-in browser.
+
+1. `POST /agent/device` starts a request and needs no identity. The body names the client in 1 to 100 characters.
+2. The response contains a secret `device_code`, a `user_code` in the form `XXXX-XXXX`, `verification_uri`, `verification_uri_complete`, `expires_in`, and `interval`.
+3. A request expires 10 minutes after creation. At most 100 unexpired requests wait at one time; more requests return `429`.
+4. User codes use 8 characters from `BCDFGHJKLMNPQRSTVWXZ`. Code input ignores case, spaces, and hyphens.
+5. The server stores a SHA-256 hash of the device code, never the raw value.
+6. The `/connect?code=XXXX-XXXX` page shows the client name, the requested access, the code, and the expiry time. Approval requires GitHub sign-in.
+7. Without a GitHub session, the page offers a sign-in link that returns to the same `/connect` address.
+8. The page tells the user to approve only a request that the user started. A request link can come from another person.
+9. Approve and Deny require a GitHub browser session, the owner header, the mutation header, and an allowed origin. Agent tokens cannot approve, deny, list, or revoke other tokens.
+10. A decision applies once. A second decision returns `409`. An unknown or expired code returns `404`. After a decision, only the deciding owner can load the request.
+11. The agent polls `POST /agent/token` with the device code, no faster than `interval` seconds. Pending and failed polls return HTTP `400` with an RFC 8628 `error` value: `authorization_pending`, `slow_down`, `access_denied`, `expired_token`, or `invalid_grant`.
+12. After approval, the next poll returns the token once and deletes the request. Later polls with that device code return `invalid_grant`.
+13. A token is `clg_` plus 43 URL-safe characters from 32 random bytes. The server stores its SHA-256 hash, owner, GitHub login, client name, scope, creation time, and last use time.
+14. The only scope is `read`. Token requests can use `GET` routes for the token owner. Other methods return `403`, except `DELETE /agent/token`, which revokes the token of that request.
+15. Agents send `Authorization: Bearer clg_...`. The server checks this token before cookies. Other `Authorization` values grant nothing and leave the browser rules unchanged.
+16. A request with an agent token and also a session cookie or `X-Anonymous-Token` returns `400`.
+17. An unknown, revoked, or expired agent token returns `401`. The server never falls back to another identity.
+18. Token requests need no `X-Changelorg-Owner` header. A present header must match the token owner, else the server returns `412`.
+19. A token expires 90 days after its last use. The server records use at most once per hour, so the last use time has a precision of one hour.
+20. `GET /agent/tokens` lists the signed-in owner's tokens with ID, name, scope, creation, last use, and expiry. It never returns raw tokens or hashes.
+21. `DELETE /agent/tokens/{id}` revokes a token of the signed-in owner. Another owner's token ID returns `404`.
+22. Only GitHub owners can approve requests and own tokens. Anonymous owners cannot approve.
+23. Logs exclude raw agent tokens and device codes. All agent access responses use `Cache-Control: private, no-store`.
+24. Caddy removes client `Authorization` headers only on `/auth/*` routes. oauth2-proxy never receives agent tokens; the app does.
 
 ## Request Safety
 
 - `GET /me` resolves identity before account access and needs no owner header.
-- Later frontend requests include `X-Changelorg-Owner` with the exact owner ID from `/me`.
+- Later frontend requests include `X-Changelorg-Owner` with the exact owner ID from `/me`. Agent token requests follow [Agent Access](#agent-access) 18.
 - The server checks that header against the current request identity before account access.
 - An owner mismatch returns `412` before any mutation. The owner header is a consistency check, not authentication.
 - Every `POST`, `PATCH`, and `DELETE` requires `X-Changelorg-Request: 1` for cross-site request forgery protection.

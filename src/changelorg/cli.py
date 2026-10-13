@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
+import httpx
 import typer
 import uvicorn
 from rich.console import Console
 from rich.table import Table
 
+from changelorg import remote
 from changelorg.config import plugin_dirs
 from changelorg.models import (
     DEFAULT_OWNER_ID,
     Change,
     SourceCreate,
     SourceUpdate,
+    utc_now,
     validate_owner_id,
 )
 from changelorg.plugin import default_plugin_manager
@@ -35,6 +39,12 @@ sources_app = typer.Typer(help="Manage subscribed sources.")
 changes_app = typer.Typer(help="Generate and list changes.")
 app.add_typer(sources_app, name="sources")
 app.add_typer(changes_app, name="changes")
+auth_app = typer.Typer(help="Give this machine read access to your account on a changelorg server.")
+app.add_typer(auth_app, name="auth")
+ServerOption = Annotated[
+    str | None,
+    typer.Option("--server", help=f"Server origin. Defaults to CHANGELORG_SERVER, then {remote.DEFAULT_SERVER}."),
+]
 console = Console()
 
 
@@ -229,3 +239,95 @@ def _print_changes(changes: list[Change], title: str) -> None:
             change.url or "",
         )
     console.print(table)
+
+
+def _remote_failure(message: str) -> NoReturn:
+    typer.echo(message, err=True)
+    raise typer.Exit(1)
+
+
+@auth_app.command("login")
+def auth_login(
+    server: ServerOption = None,
+    name: Annotated[str | None, typer.Option("--name", help="Client name on the approval page.")] = None,
+) -> None:
+    """Ask for approval in the browser, then save a read-only token."""
+    client_name = (name or f"changelorg CLI on {socket.gethostname()}")[:100]
+    try:
+        origin = remote.server_origin(server)
+        credentials = remote.load_credentials()
+        with remote.client(origin) as http:
+            device = remote.start_login(http, client_name)
+            typer.echo(f"Open this link in your browser: {device.verification_uri_complete}")
+            typer.echo(f"Check that the page shows the code {device.user_code}, then approve.")
+            typer.echo(f"Waiting for approval. The link expires in {device.expires_in // 60} minutes.")
+            grant = remote.wait_for_token(http, device)
+        credentials.servers[origin] = remote.SavedToken(
+            token=grant.access_token, owner_id=grant.owner_id, login=grant.login, name=client_name, saved_at=utc_now()
+        )
+        path = remote.save_credentials(credentials)
+    except remote.RemoteError as exc:
+        _remote_failure(str(exc))
+    except httpx.HTTPError:
+        _remote_failure("Cannot reach the server. Check the connection and the --server value.")
+    typer.echo(f"Approved for {grant.login} ({grant.owner_id}). The token is saved in {path}.")
+
+
+@auth_app.command("status")
+def auth_status(server: ServerOption = None) -> None:
+    """Check the saved token. Exit 0 when it works, else exit 1."""
+    try:
+        origin = remote.server_origin(server)
+        saved = remote.load_credentials().servers.get(origin)
+        if saved is None:
+            _remote_failure(f"Not signed in to {origin}. Run changelorg auth login.")
+        with remote.client(origin) as http:
+            identity = remote.get_json(http, saved.token, "/me")
+    except remote.RemoteError as exc:
+        _remote_failure(str(exc))
+    except httpx.HTTPError:
+        _remote_failure("Cannot reach the server. Check the connection and the --server value.")
+    if not isinstance(identity, dict) or identity.get("id") != saved.owner_id:
+        _remote_failure("The server returned a different account for the saved token. Run changelorg auth login.")
+    typer.echo(f"Signed in to {origin} as {saved.login} ({saved.owner_id}).")
+
+
+@auth_app.command("logout")
+def auth_logout(server: ServerOption = None) -> None:
+    """Revoke the saved token on the server, then delete it locally."""
+    try:
+        origin = remote.server_origin(server)
+        credentials = remote.load_credentials()
+        saved = credentials.servers.get(origin)
+        if saved is None:
+            typer.echo(f"Not signed in to {origin}.")
+            return
+        with remote.client(origin) as http:
+            remote.revoke(http, saved.token)
+        del credentials.servers[origin]
+        remote.save_credentials(credentials)
+    except remote.RemoteError as exc:
+        _remote_failure(str(exc))
+    except httpx.HTTPError:
+        _remote_failure("Cannot reach the server, so the token is still valid. Retry, or revoke it in the account menu.")
+    typer.echo(f"Signed out of {origin}. The server no longer accepts the token.")
+
+
+@app.command("api")
+def api_get(
+    path: Annotated[str, typer.Argument(help="Server path, for example '/changes?profile=dev&since=10d'.")],
+    server: ServerOption = None,
+) -> None:
+    """Send an authenticated GET to the server and print the JSON response."""
+    try:
+        origin = remote.server_origin(server)
+        saved = remote.load_credentials().servers.get(origin)
+        if saved is None:
+            _remote_failure(f"Not signed in to {origin}. Run changelorg auth login.")
+        with remote.client(origin) as http:
+            value = remote.get_json(http, saved.token, path)
+    except remote.RemoteError as exc:
+        _remote_failure(str(exc))
+    except httpx.HTTPError:
+        _remote_failure("Cannot reach the server. Check the connection and the --server value.")
+    _dump_json(value)

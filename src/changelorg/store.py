@@ -7,7 +7,7 @@ import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -17,7 +17,15 @@ import duckdb
 
 from changelorg.config import database_path
 from changelorg.models import (
+    AGENT_MAX_PENDING_REQUESTS,
+    AGENT_POLL_INTERVAL_SECONDS,
+    AGENT_REQUEST_TTL,
+    AGENT_TOKEN_IDLE_TTL,
+    AGENT_TOKEN_USE_PRECISION,
     DEFAULT_OWNER_ID,
+    AgentPollError,
+    AgentRequest,
+    AgentToken,
     Change,
     ChangeInput,
     ChangeUpdate,
@@ -27,6 +35,7 @@ from changelorg.models import (
     SourceCreate,
     SourceUpdate,
     TimeWindow,
+    display_user_code,
     utc_now,
     validate_owner_id,
 )
@@ -111,6 +120,30 @@ def _schema(connection: duckdb.DuckDBPyConnection, source_start: int = 1, change
         CREATE TABLE IF NOT EXISTS store_metadata (key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_sources_owner ON sources(owner_id);
         CREATE INDEX IF NOT EXISTS idx_changes_published_at ON changes(published_at);
+        CREATE SEQUENCE IF NOT EXISTS agent_token_ids START 1;
+        -- Agent access stores hashes of device codes and tokens, never raw values.
+        CREATE TABLE IF NOT EXISTS agent_requests (
+            device_code_hash VARCHAR PRIMARY KEY,
+            user_code VARCHAR NOT NULL,
+            client_name VARCHAR NOT NULL,
+            scope VARCHAR NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            last_polled_at TIMESTAMPTZ,
+            owner_id VARCHAR,
+            login VARCHAR,
+            approved BOOLEAN
+        );
+        CREATE TABLE IF NOT EXISTS agent_tokens (
+            id BIGINT PRIMARY KEY DEFAULT nextval('agent_token_ids'),
+            token_hash VARCHAR NOT NULL UNIQUE,
+            owner_id VARCHAR NOT NULL,
+            login VARCHAR NOT NULL,
+            name VARCHAR NOT NULL,
+            scope VARCHAR NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            last_used_at TIMESTAMPTZ NOT NULL
+        );
     """)
 
 
@@ -697,3 +730,157 @@ def seed_sources_once(sources: list[SourceCreate], db_path: Path | None = None) 
                 added += 1
         connection.execute("INSERT INTO store_metadata VALUES ('default_sources_seeded', 'true')")
         return added
+
+
+class AgentCapacityError(Exception):
+    """Too many agent requests wait for approval."""
+
+
+def _agent_request_from_row(row: dict[str, Any]) -> AgentRequest:
+    approved = row["approved"]
+    return AgentRequest(
+        user_code=display_user_code(row["user_code"]),
+        client_name=row["client_name"],
+        scope=row["scope"],
+        status="pending" if approved is None else "approved" if approved else "denied",
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+    )
+
+
+def create_agent_request(
+    device_code_hash: str, user_code: str, client_name: str, now: datetime, db_path: Path | None = None
+) -> AgentRequest | None:
+    """Store a new device request. Return None when the user code is already in use."""
+    with _transaction(db_path) as connection:
+        connection.execute("DELETE FROM agent_requests WHERE expires_at <= ?", [now])
+        row = connection.execute("SELECT count(*) FROM agent_requests").fetchone()
+        assert row is not None
+        if row[0] >= AGENT_MAX_PENDING_REQUESTS:
+            raise AgentCapacityError
+        if connection.execute("SELECT 1 FROM agent_requests WHERE user_code = ?", [user_code]).fetchone():
+            return None
+        rows = _rows(
+            connection.execute(
+                """
+            INSERT INTO agent_requests (device_code_hash, user_code, client_name, scope, created_at, expires_at)
+            VALUES (?, ?, ?, 'read', ?, ?) RETURNING *
+        """,
+                [device_code_hash, user_code, client_name, now, now + AGENT_REQUEST_TTL],
+            )
+        )
+        return _agent_request_from_row(rows[0])
+
+
+def _visible_agent_request(
+    connection: duckdb.DuckDBPyConnection, user_code: str, owner_id: str, now: datetime
+) -> dict[str, Any]:
+    rows = _rows(
+        connection.execute(
+            "SELECT * FROM agent_requests WHERE user_code = ? AND expires_at > ? AND (approved IS NULL OR owner_id = ?)",
+            [user_code, now, owner_id],
+        )
+    )
+    if not rows:
+        raise KeyError(f"agent request {user_code!r} not found")
+    return rows[0]
+
+
+def get_agent_request(user_code: str, owner_id: str, now: datetime, db_path: Path | None = None) -> AgentRequest:
+    validate_owner_id(owner_id)
+    with _transaction(db_path) as connection:
+        return _agent_request_from_row(_visible_agent_request(connection, user_code, owner_id, now))
+
+
+def decide_agent_request(
+    user_code: str, owner_id: str, login: str, approved: bool, now: datetime, db_path: Path | None = None
+) -> AgentRequest:
+    validate_owner_id(owner_id)
+    with _transaction(db_path) as connection:
+        row = _visible_agent_request(connection, user_code, owner_id, now)
+        if row["approved"] is not None:
+            raise ValueError(f"agent request {user_code!r} already has a decision")
+        rows = _rows(
+            connection.execute(
+                "UPDATE agent_requests SET owner_id = ?, login = ?, approved = ? WHERE device_code_hash = ? RETURNING *",
+                [owner_id, login, approved, row["device_code_hash"]],
+            )
+        )
+        return _agent_request_from_row(rows[0])
+
+
+# A client that polls on schedule can arrive slightly early. Allow one second of jitter before slow_down.
+_MIN_POLL_GAP = timedelta(seconds=AGENT_POLL_INTERVAL_SECONDS - 1)
+
+
+def poll_agent_request(
+    device_code_hash: str, token_hash: str, now: datetime, db_path: Path | None = None
+) -> AgentToken | AgentPollError:
+    """Advance one device request poll. An approved request becomes a token with the supplied hash."""
+    with _transaction(db_path) as connection:
+        rows = _rows(connection.execute("SELECT * FROM agent_requests WHERE device_code_hash = ?", [device_code_hash]))
+        if not rows:
+            return AgentPollError.INVALID
+        row = rows[0]
+        if row["expires_at"] <= now:
+            connection.execute("DELETE FROM agent_requests WHERE device_code_hash = ?", [device_code_hash])
+            return AgentPollError.EXPIRED
+        if row["approved"] is False:
+            connection.execute("DELETE FROM agent_requests WHERE device_code_hash = ?", [device_code_hash])
+            return AgentPollError.DENIED
+        if row["approved"] is True:
+            tokens = _rows(
+                connection.execute(
+                    """
+                INSERT INTO agent_tokens (token_hash, owner_id, login, name, scope, created_at, last_used_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+            """,
+                    [token_hash, row["owner_id"], row["login"], row["client_name"], row["scope"], now, now],
+                )
+            )
+            connection.execute("DELETE FROM agent_requests WHERE device_code_hash = ?", [device_code_hash])
+            return AgentToken.model_validate(tokens[0])
+        connection.execute(
+            "UPDATE agent_requests SET last_polled_at = ? WHERE device_code_hash = ?", [now, device_code_hash]
+        )
+        last_polled_at = row["last_polled_at"]
+        if last_polled_at is not None and now - last_polled_at < _MIN_POLL_GAP:
+            return AgentPollError.SLOW_DOWN
+        return AgentPollError.PENDING
+
+
+def resolve_agent_token(token_hash: str, now: datetime, db_path: Path | None = None) -> AgentToken | None:
+    """Return the live token for a hash and record its use. Expired tokens are deleted."""
+    with _transaction(db_path) as connection:
+        rows = _rows(connection.execute("SELECT * FROM agent_tokens WHERE token_hash = ?", [token_hash]))
+        if not rows:
+            return None
+        token = AgentToken.model_validate(rows[0])
+        if token.expires_at <= now:
+            connection.execute("DELETE FROM agent_tokens WHERE id = ?", [token.id])
+            return None
+        if now - token.last_used_at >= AGENT_TOKEN_USE_PRECISION:
+            connection.execute("UPDATE agent_tokens SET last_used_at = ? WHERE id = ?", [now, token.id])
+            token = token.model_copy(update={"last_used_at": now})
+        return token
+
+
+def list_agent_tokens(owner_id: str, now: datetime, db_path: Path | None = None) -> list[AgentToken]:
+    validate_owner_id(owner_id)
+    with _transaction(db_path) as connection:
+        connection.execute(
+            "DELETE FROM agent_tokens WHERE owner_id = ? AND last_used_at <= ?", [owner_id, now - AGENT_TOKEN_IDLE_TTL]
+        )
+        rows = _rows(
+            connection.execute("SELECT * FROM agent_tokens WHERE owner_id = ? ORDER BY created_at DESC, id DESC", [owner_id])
+        )
+        return [AgentToken.model_validate(row) for row in rows]
+
+
+def delete_agent_token(token_id: int, owner_id: str, db_path: Path | None = None) -> None:
+    validate_owner_id(owner_id)
+    with _transaction(db_path) as connection:
+        if not connection.execute(
+            "DELETE FROM agent_tokens WHERE id = ? AND owner_id = ? RETURNING id", [token_id, owner_id]
+        ).fetchone():
+            raise KeyError(f"agent token {token_id} not found")

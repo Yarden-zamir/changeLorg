@@ -48,6 +48,8 @@ before doing so, or Caddy will reject the duplicate site definition.
 - Variables: `KITSHN_COMPOSE_PROFILES`, `KITSHN_CHANGELORG_AUTH_ENABLED`, `KITSHN_OAUTH2_PROXY_CLIENT_ID`, and optional `KITSHN_CHANGELORG_PUBLIC_ORIGIN`, `KITSHN_CHANGELORG_CORS_ORIGINS`.
 - Secrets: `KITSHN_OAUTH2_PROXY_CLIENT_SECRET`, `KITSHN_OAUTH2_PROXY_COOKIE_SECRET` (URL-safe base64).
 - Prod login needs both `COMPOSE_PROFILES=github-auth` and `CHANGELORG_AUTH_ENABLED=true`. Previews run without login by default.
+- The proxy session cookie lasts 30 days. Caddy removes client `Authorization` headers only on `/auth/*`, so agent tokens reach the app and never reach oauth2-proxy.
+- Agent approval needs GitHub sign-in. A preview without login cannot approve agents.
 
 ## Badge
 

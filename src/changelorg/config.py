@@ -25,6 +25,19 @@ def database_path() -> Path:
     return data_dir() / "changelorg.duckdb"
 
 
+def config_dir() -> Path:
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    config_home = Path(xdg_config_home).expanduser() if xdg_config_home else Path.home() / ".config"
+    return config_home / APP_NAME
+
+
+def credentials_path() -> Path:
+    configured = os.environ.get("CHANGELORG_CREDENTIALS")
+    if configured:
+        return Path(configured).expanduser()
+    return config_dir() / "credentials.json"
+
+
 def plugin_dirs() -> list[Path]:
     dirs: list[Path] = []
     configured = os.environ.get("CHANGELORG_PLUGIN_PATH")
@@ -32,10 +45,7 @@ def plugin_dirs() -> list[Path]:
         dirs.extend(Path(part).expanduser() for part in configured.split(os.pathsep) if part)
 
     dirs.append(Path.cwd() / "plugins")
-
-    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
-    config_home = Path(xdg_config_home).expanduser() if xdg_config_home else Path.home() / ".config"
-    dirs.append(config_home / APP_NAME / "plugins")
+    dirs.append(config_dir() / "plugins")
 
     unique_dirs: list[Path] = []
     seen: set[Path] = set()

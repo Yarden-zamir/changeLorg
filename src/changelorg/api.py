@@ -9,11 +9,12 @@ import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from changelorg import store
+from changelorg.agent_access import router as agent_router
 from changelorg.auth import Identity, request_identity
 from changelorg.discovery import discover_sources, normalize_discovery_url
 from changelorg.enrichment import PROFILES
@@ -143,6 +144,7 @@ def create_app() -> FastAPI:
                 await refresh_loop.stop()
 
     app = FastAPI(title="changelorg", version="0.2.0", lifespan=lifespan)
+    app.state.public_origin = public_origin
     app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -462,10 +464,19 @@ def create_app() -> FastAPI:
                     owner_id=identity.owner_id,
                 )
 
+    app.include_router(agent_router)
+
     frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
     if not frontend_dist.exists():
         frontend_dist = Path.cwd() / "frontend" / "dist"
     if frontend_dist.exists():
+        index = frontend_dist / "index.html"
+
+        # The frontend renders the agent approval page for this path.
+        @app.get("/connect", include_in_schema=False)
+        def connect_page() -> FileResponse:
+            return FileResponse(index)
+
         app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
     return app
 

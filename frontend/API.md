@@ -1,6 +1,6 @@
 # Frontend API Contract
 
-This contract describes the requests from `src/lib/api.ts`, `App.tsx`, `AccountArea.tsx`, and `SourceEditor.tsx`.
+This contract describes the requests from `src/lib/api.ts`, `App.tsx`, `AccountArea.tsx`, `SourceEditor.tsx`, `ConnectPage.tsx`, and `ConnectedAgents.tsx`.
 The backend must enforce account isolation. Client checks do not replace server authorization.
 The editor rules define approved behavior, not proof of tests or deployment. They introduce no backend route or identity change.
 
@@ -19,7 +19,7 @@ The editor rules define approved behavior, not proof of tests or deployment. The
 11. The anonymous token remains intact after sign-in, sign-out, or import. An invalid stored token blocks access instead of replacement.
 12. Private responses require `Cache-Control: private, no-store`. Cross-origin development requires explicit frontend origins, credentials, and all three custom headers in CORS.
 
-The authentication proxy handles `/auth/start?rd=/` and `/auth/sign_out?rd=/` as browser navigation routes, not JSON API mutations.
+The authentication proxy handles `/auth/start?rd=/` and `/auth/sign_out?rd=/` as browser navigation routes, not JSON API mutations. The agent access page uses `rd` with its own `/connect` address.
 
 ## Session Recovery
 
@@ -87,6 +87,22 @@ type Change = {
   state_updated_at: string | null;
 };
 type ChangeState = { dismissed?: boolean; saved?: boolean; note?: string };
+type AgentRequest = {
+  user_code: string;
+  client_name: string;
+  scope: "read";
+  status: "pending" | "approved" | "denied";
+  created_at: string;
+  expires_at: string;
+};
+type AgentToken = {
+  id: number;
+  name: string;
+  scope: "read";
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+};
 type PreviewChange = Pick<Change,
   "title" | "url" | "summary" | "content" | "published_at" | "external_id" | "metadata"
 >;
@@ -122,10 +138,27 @@ Successful responses use JSON unless the route permits `204` below. Extra respon
 | POST | `/changes/restore` | `{ ids: number[] }` | Complete updated `Change[]` for the supplied IDs |
 | POST | `/me/import` | No body | `{ profiles: number, sources: number, changes: number }` |
 | POST | `/me/import-state` | `{ state: Record<string, ChangeState> }` | JSON or `204`; body unused |
+| GET | `/agent/device/{encodedUserCode}` | No body; GitHub session | `AgentRequest` |
+| POST | `/agent/device/{encodedUserCode}/approve` | No body; GitHub session | `AgentRequest` |
+| POST | `/agent/device/{encodedUserCode}/deny` | No body; GitHub session | `AgentRequest` |
+| GET | `/agent/tokens` | No body; GitHub session | `AgentToken[]` |
+| DELETE | `/agent/tokens/{id}` | No body; GitHub session | `204` |
 
 `SourceError` contains `source_id: number`, `source_name: string`, `plugin: string`, and `message: string`.
 The frontend displays only the error count. It does not display raw source errors or API error bodies.
 An active URL `source` filter adds `source_id={id}` to `GET /changes`. The server applies this filter before `limit=200`.
+
+## Agent Access Page
+
+[Agent Access](../docs/user-data.md#agent-access) defines the server rules. The agent routes `POST /agent/device`, `POST /agent/token`, and `DELETE /agent/token` are not frontend requests.
+
+1. The `/connect` path renders the approval page instead of the feed. The `code` query parameter carries the user code; without it, the page asks for the code.
+2. Without a GitHub session, the page explains the request and links to `/auth/start?rd=` with the encoded `/connect` address. It never approves for an anonymous owner.
+3. With a GitHub session, the page loads `AgentRequest` and shows the client name, the user code, the expiry time, and the read access in plain words.
+4. The page tells the user to compare the code with the agent output and to approve only a request that the user started.
+5. Approve and Deny require an explicit click. Controls block duplicate decisions while a decision is pending.
+6. After a decision, the page states the result and tells the user to return to the agent. A `404` states that the code is unknown or expired.
+7. The GitHub account menu lists connected agents from `GET /agent/tokens` with name, last use, and expiry. Revoke requires confirmation and then reloads the list.
 
 ## Source Discovery
 
