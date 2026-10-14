@@ -17,6 +17,9 @@ AGENT_TOKEN_IDLE_TTL = timedelta(days=90)
 AGENT_TOKEN_USE_PRECISION = timedelta(hours=1)
 USER_CODE_ALPHABET = "BCDFGHJKLMNPQRSTVWXZ"
 USER_CODE_LENGTH = 8
+# Profile sharing values: docs/user-data.md "Profile Sharing".
+SHARE_TOKEN_BYTES = 16
+SHARE_CHANGE_WINDOW = timedelta(days=30)
 
 
 def validate_owner_id(value: str) -> str:
@@ -40,6 +43,42 @@ class ProfileCreate(BaseModel):
 class Profile(BaseModel):
     name: str
     source_count: int
+    share_token: str | None = None
+
+
+class ShareCreate(BaseModel):
+    profile: str = Field(min_length=1, max_length=100)
+
+    @field_validator("profile", mode="before")
+    @classmethod
+    def trim_profile(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+
+class Share(BaseModel):
+    token: str
+    profile: str
+
+
+class SharedSource(BaseModel):
+    """A source as another person sees it: no owner, ID, state, or profile."""
+
+    name: str
+    plugin: str
+    config: dict[str, Any]
+
+
+class SharedProfile(BaseModel):
+    name: str
+    shared_by: str | None
+    sources: list[SharedSource]
+
+
+class ShareImportResult(BaseModel):
+    profile: str
+    sources: int
+    skipped: int
+    changes: int
 
 
 def utc_now() -> datetime:

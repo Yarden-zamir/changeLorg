@@ -4,8 +4,9 @@ import hashlib
 import json
 import logging
 import os
+import secrets
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +24,8 @@ from changelorg.models import (
     AGENT_TOKEN_IDLE_TTL,
     AGENT_TOKEN_USE_PRECISION,
     DEFAULT_OWNER_ID,
+    SHARE_CHANGE_WINDOW,
+    SHARE_TOKEN_BYTES,
     AgentPollError,
     AgentRequest,
     AgentScope,
@@ -32,6 +35,10 @@ from changelorg.models import (
     ChangeUpdate,
     Profile,
     ProfileCreate,
+    Share,
+    SharedProfile,
+    SharedSource,
+    ShareImportResult,
     Source,
     SourceCreate,
     SourceUpdate,
@@ -144,6 +151,15 @@ def _schema(connection: duckdb.DuckDBPyConnection, source_start: int = 1, change
             scope VARCHAR NOT NULL,
             created_at TIMESTAMPTZ NOT NULL,
             last_used_at TIMESTAMPTZ NOT NULL
+        );
+        -- A share token is a public link capability: it reveals the enabled sources of one profile, nothing else.
+        CREATE TABLE IF NOT EXISTS profile_shares (
+            token VARCHAR PRIMARY KEY,
+            owner_id VARCHAR NOT NULL,
+            profile VARCHAR NOT NULL,
+            login VARCHAR,
+            created_at TIMESTAMPTZ NOT NULL,
+            UNIQUE (owner_id, profile)
         );
     """)
 
@@ -568,9 +584,11 @@ def list_profiles(owner_id: str, db_path: Path | None = None) -> list[Profile]:
         rows = _rows(
             connection.execute(
                 """
-            SELECT profiles.name, count(sources.id) AS source_count FROM profiles
+            SELECT profiles.name, count(sources.id) AS source_count, any_value(profile_shares.token) AS share_token
+            FROM profiles
             LEFT JOIN sources ON sources.owner_id = profiles.owner_id AND (sources.config->>'profile') = profiles.name
                 AND sources.enabled
+            LEFT JOIN profile_shares ON profile_shares.owner_id = profiles.owner_id AND profile_shares.profile = profiles.name
             WHERE profiles.owner_id = ? GROUP BY profiles.name ORDER BY lower(profiles.name), profiles.name
         """,
                 [owner_id],
@@ -605,6 +623,10 @@ def rename_profile(name: str, new_name: str, owner_id: str, db_path: Path | None
         ):
             raise ValueError(f"profile {new_name!r} already exists")
         connection.execute("UPDATE profiles SET name = ? WHERE owner_id = ? AND name = ?", [new_name, owner_id, name])
+        share = connection.execute(
+            "UPDATE profile_shares SET profile = ? WHERE owner_id = ? AND profile = ? RETURNING token",
+            [new_name, owner_id, name],
+        ).fetchone()
         rows = connection.execute(
             """
             UPDATE sources SET config = json_merge_patch(config, ?::JSON), updated_at = ?
@@ -612,7 +634,9 @@ def rename_profile(name: str, new_name: str, owner_id: str, db_path: Path | None
         """,
             [_json({"profile": new_name}), utc_now(), owner_id, name],
         ).fetchall()
-        return Profile(name=new_name, source_count=sum(enabled for (enabled,) in rows))
+        return Profile(
+            name=new_name, source_count=sum(enabled for (enabled,) in rows), share_token=share[0] if share else None
+        )
 
 
 def delete_profile(name: str, owner_id: str, db_path: Path | None = None) -> None:
@@ -630,6 +654,7 @@ def delete_profile(name: str, owner_id: str, db_path: Path | None = None) -> Non
             [owner_id, name],
         )
         connection.execute("DELETE FROM sources WHERE owner_id = ? AND (config->>'profile') = ?", [owner_id, name])
+        connection.execute("DELETE FROM profile_shares WHERE owner_id = ? AND profile = ?", [owner_id, name])
         connection.execute("DELETE FROM profiles WHERE owner_id = ? AND name = ?", [owner_id, name])
 
 
@@ -714,6 +739,140 @@ def import_anonymous(anonymous_owner: str, github_owner: str, db_path: Path | No
                 ).fetchone()
                 counts["changes"] += int(copied is not None)
     return counts
+
+
+def share_profile(name: str, owner_id: str, login: str | None, db_path: Path | None = None) -> Share:
+    """Return the share link token of a profile. A profile has at most one; a second call returns the same token."""
+    validate_owner_id(owner_id)
+    name = ProfileCreate(name=name).name
+    with _transaction(db_path) as connection:
+        if not connection.execute(
+            "SELECT 1 FROM profiles WHERE owner_id = ? AND name = ?", [owner_id, name]
+        ).fetchone():
+            raise KeyError(f"profile {name!r} not found")
+        row = connection.execute(
+            "SELECT token FROM profile_shares WHERE owner_id = ? AND profile = ?", [owner_id, name]
+        ).fetchone()
+        if row is not None:
+            return Share(token=row[0], profile=name)
+        token = secrets.token_urlsafe(SHARE_TOKEN_BYTES)
+        connection.execute(
+            "INSERT INTO profile_shares (token, owner_id, profile, login, created_at) VALUES (?, ?, ?, ?, ?)",
+            [token, owner_id, name, login, utc_now()],
+        )
+        return Share(token=token, profile=name)
+
+
+def unshare_profile(token: str, owner_id: str, db_path: Path | None = None) -> None:
+    validate_owner_id(owner_id)
+    with _transaction(db_path) as connection:
+        if not connection.execute(
+            "DELETE FROM profile_shares WHERE token = ? AND owner_id = ? RETURNING token", [token, owner_id]
+        ).fetchone():
+            raise KeyError("share not found")
+
+
+def _shared_sources(connection: duckdb.DuckDBPyConnection, token: str) -> tuple[str, str | None, list[Source]]:
+    share = connection.execute("SELECT owner_id, profile, login FROM profile_shares WHERE token = ?", [token]).fetchone()
+    if share is None:
+        raise KeyError("share not found")
+    owner_id, profile, login = share
+    rows = _rows(
+        connection.execute(
+            """
+        SELECT * FROM sources WHERE owner_id = ? AND enabled AND (config->>'profile') = ? ORDER BY lower(name), id
+    """,
+            [owner_id, profile],
+        )
+    )
+    return profile, login, [_source_from_row(row) for row in rows]
+
+
+def _shared_config(source: Source, allowed_keys: Mapping[str, frozenset[str]]) -> dict[str, Any] | None:
+    """Keep only the settings that the plugin declares, so a share never carries unknown values. None: unknown plugin."""
+    keys = allowed_keys.get(source.plugin)
+    if keys is None:
+        return None
+    return {key: value for key, value in source.config.items() if key in keys and key != "profile"}
+
+
+def get_shared_profile(
+    token: str, allowed_keys: Mapping[str, frozenset[str]], db_path: Path | None = None
+) -> SharedProfile:
+    with _transaction(db_path) as connection:
+        profile, login, sources = _shared_sources(connection, token)
+    shared = [
+        SharedSource(name=source.name, plugin=source.plugin, config=config)
+        for source in sources
+        if (config := _shared_config(source, allowed_keys)) is not None
+    ]
+    return SharedProfile(name=profile, shared_by=login, sources=shared)
+
+
+def import_shared_profile(
+    token: str,
+    name: str,
+    owner_id: str,
+    allowed_keys: Mapping[str, frozenset[str]],
+    db_path: Path | None = None,
+) -> ShareImportResult:
+    """Copy the enabled sources of a shared profile into a profile of the owner, with their recent changes.
+
+    The copy never carries the sharer's dismissed flags, shelf flags, or notes. Equal sources in the target
+    profile are skipped. The whole import fails when a source or profile limit would be exceeded.
+    """
+    validate_owner_id(owner_id)
+    name = ProfileCreate(name=name).name
+    added = skipped = copied = 0
+    since = utc_now() - SHARE_CHANGE_WINDOW
+    with _transaction(db_path) as connection:
+        _, _, sources = _shared_sources(connection, token)
+        _ensure_profile(connection, name, owner_id)
+        account = _rows(connection.execute("SELECT plugin, config FROM sources WHERE owner_id = ?", [owner_id]))
+        existing = {(row["plugin"], _json(json.loads(row["config"]))) for row in account}
+        for source in sources:
+            config = _shared_config(source, allowed_keys)
+            if config is None:
+                skipped += 1
+                continue
+            copy = SourceCreate(name=source.name, plugin=source.plugin, config={**config, "profile": name})
+            identity = (copy.plugin, _json(_config(copy.config)))
+            if identity in existing:
+                skipped += 1
+                continue
+            target = _insert_source(connection, copy, owner_id)
+            existing.add(identity)
+            added += 1
+            changes = _rows(
+                connection.execute(_CHANGE_SELECT + " WHERE sources.id = ? AND changes.published_at >= ?", [source.id, since])
+            )
+            for row in changes:
+                change = _change_from_row(row)
+                external_id = change.external_id
+                # Derived IDs include the source ID. Rebase them so a later fetch of the copy finds these changes.
+                if external_id == _fallback_external_id(source.id, change):
+                    external_id = _fallback_external_id(target.id, change)
+                inserted = connection.execute(
+                    """
+                    INSERT INTO changes (
+                        source_id, external_id, title, url, summary, content, published_at, fetched_at, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (source_id, external_id) DO NOTHING RETURNING id
+                """,
+                    [
+                        target.id,
+                        external_id,
+                        change.title,
+                        change.url,
+                        change.summary,
+                        change.content,
+                        change.published_at,
+                        change.fetched_at,
+                        _json(change.metadata),
+                    ],
+                ).fetchone()
+                copied += int(inserted is not None)
+    return ShareImportResult(profile=name, sources=added, skipped=skipped, changes=copied)
 
 
 def seed_sources_once(sources: list[SourceCreate], db_path: Path | None = None) -> int:

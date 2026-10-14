@@ -5,6 +5,7 @@
 changelorg tracks source changes and generates private, time-windowed feeds for anonymous owners and GitHub accounts.
 The website displays the feed. The CLI exports structured data for analysis and summaries.
 Agents read, and with write access also change, a GitHub account's data with an agent token after the owner approves them in the browser.
+An owner can share the sources of a profile through a link, so that another person can start a feed with them.
 
 This spec defines the approved target behavior, not completed implementation or deployment verification.
 [Frontend API Contract](../frontend/API.md) defines request and response contracts. [User Data](user-data.md) defines storage, ownership, authentication, and imports.
@@ -44,8 +45,9 @@ Behavior:
 - Profiles are explicit records with the key `(owner_id, name)`.
 - Empty profiles persist and appear in the owner's profile list.
 - `source_count` counts enabled sources only.
-- Profile rename updates `config.profile` for its sources in the same transaction.
-- Profile deletion explicitly deletes its sources, changes, shelf state, and notes in the same transaction.
+- Profile rename updates `config.profile` for its sources and keeps its share link, in the same transaction.
+- Profile deletion explicitly deletes its sources, changes, shelf state, notes, and share link in the same transaction.
+- A profile has at most one share link: [Profile Sharing](user-data.md#profile-sharing).
 - Profile names contain 1 to 100 characters. Source names contain 1 to 200 characters.
 
 ### Change
@@ -307,6 +309,8 @@ Additional routes:
 - `POST /changes/generate`: Optional owner-scoped generation, disabled unless `CHANGELORG_MANUAL_GENERATE_API=true`.
 - `POST /agent/device`, `POST /agent/token`, `DELETE /agent/token`, `GET /agent/device/{user_code}`, `POST /agent/device/{user_code}/approve`, `POST /agent/device/{user_code}/deny`, `GET /agent/tokens`, and `DELETE /agent/tokens/{id}`: [Agent Access](user-data.md#agent-access).
 - `GET /connect`: The frontend page for agent approval.
+- `POST /shares`, `DELETE /shares/{token}`, `GET /shares/{token}`, and `POST /shares/{token}/import`: [Profile Sharing](user-data.md#profile-sharing).
+- `GET /share/{token}`: The frontend page for a shared profile.
 
 Behavior:
 
@@ -342,7 +346,8 @@ The interface uses the tick3d neo-brutalism style. `frontend/src/index.css` hold
 Behavior:
 
 - Loads cached changes from the backend.
-- Lists the owner's profiles, including empty profiles, and permits profile creation, rename, and deletion.
+- Lists the owner's profiles, including empty profiles, and permits profile creation, rename, deletion, and share links.
+- The `/share/{token}` page shows a shared profile and imports it on an explicit click: [Shared Profiles](../frontend/API.md#shared-profiles).
 - Reads durable backend data. The server refreshes enabled sources hourly with a default 30-day fetch window.
 - Supports source search, discovery, preview, creation, edit, enable, disable, draft duplication, confirmed deletion, and explicit refresh.
 - One source search input matches names against saved sources and optional catalog suggestions. It does not search the full web.

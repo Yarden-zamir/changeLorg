@@ -44,7 +44,14 @@ type Identity = {
   auth_enabled: boolean;
   anonymous_has_data: boolean;
 };
-type Profile = { name: string; source_count: number };
+type Profile = { name: string; source_count: number; share_token: string | null };
+type Share = { token: string; profile: string };
+type SharedProfile = {
+  name: string;
+  shared_by: string | null;
+  sources: { name: string; plugin: string; config: Record<string, unknown> }[];
+};
+type ShareImportResult = { profile: string; sources: number; skipped: number; changes: number };
 type SourceCreate = {
   name: string;
   plugin: string;
@@ -111,6 +118,7 @@ type PreviewChange = Pick<Change,
 Dates use ISO strings. Required text fields use empty strings rather than `null`.
 Feed windows use `24h`, `7d`, `30d`, `90d`, or `365d`.
 `source_count` counts enabled sources. The profile list includes empty profiles and excludes other owners.
+`share_token` is the token of the profile's share link, or `null` when the profile has no share link.
 Saved `Source.config.profile` is a known string. `SourceCreate` remains profile-optional for discovery and preview; source writes require an existing owner profile.
 Successful responses use JSON unless the route permits `204` below. Extra response fields are allowed.
 
@@ -143,6 +151,10 @@ Successful responses use JSON unless the route permits `204` below. Extra respon
 | POST | `/agent/device/{encodedUserCode}/deny` | No body; GitHub session | `AgentRequest` |
 | GET | `/agent/tokens` | No body; GitHub session | `AgentToken[]` |
 | DELETE | `/agent/tokens/{id}` | No body; GitHub session | `204` |
+| POST | `/shares` | `{ profile: string }` | `Share` |
+| DELETE | `/shares/{token}` | No body | `204` |
+| GET | `/shares/{token}` | No body; no identity needed | `SharedProfile` |
+| POST | `/shares/{token}/import` | `{ name: string }` | `ShareImportResult` |
 
 `SourceError` contains `source_id: number`, `source_name: string`, `plugin: string`, and `message: string`.
 The frontend displays only the error count. It does not display raw source errors or API error bodies.
@@ -159,6 +171,20 @@ An active URL `source` filter adds `source_id={id}` to `GET /changes`. The serve
 5. Approve and Deny require an explicit click. Controls block duplicate decisions while a decision is pending.
 6. After a decision, the page states the result and tells the user to return to the agent. A `404` states that the code is unknown or expired.
 7. The GitHub account menu lists connected agents from `GET /agent/tokens` with name, access, last use, and expiry. Revoke requires confirmation and then reloads the list.
+
+## Shared Profiles
+
+[Profile Sharing](../docs/user-data.md#profile-sharing) defines the server rules.
+
+1. In Manage profiles, a selected profile shows its share link, or a Create share link action. The link is `/share/{token}` on the site origin.
+2. Before a link exists, the editor states that anyone with the link can see and copy the enabled sources, and that read marks, shelf, and notes stay private.
+3. Copy link copies the link. Stop sharing deletes the share, and the old link returns `404` for everyone.
+4. The `/share/{token}` path renders the shared profile page instead of the feed. It shows the sharer's GitHub login when known, the profile name, and each source name with its host.
+5. The page proposes the shared profile name, or `<name> (shared)` when the owner already has a profile with that name. The visitor can change the name.
+6. When the name matches an existing profile, the page states that the sources join it and that sources it already has stay as they were.
+7. Import requires an explicit click. The result states the new sources, the copied items, and the skipped sources, and links to the feed of that profile.
+8. Without GitHub sign-in, the page states that the import goes into this browser only. It links to GitHub sign-in when sign-in is available.
+9. A `404` states that the link is unknown or that its owner stopped sharing. A `409` states the source and profile limits.
 
 ## Source Discovery
 

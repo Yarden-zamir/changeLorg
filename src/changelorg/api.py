@@ -25,6 +25,10 @@ from changelorg.models import (
     GenerationResult,
     Profile,
     ProfileCreate,
+    Share,
+    ShareCreate,
+    SharedProfile,
+    ShareImportResult,
     Source,
     SourceCreate,
     SourceUpdate,
@@ -121,6 +125,13 @@ def create_app() -> FastAPI:
     if "*" in origins:
         raise ValueError("CORS requires explicit origins")
     manager = PluginManager([RssAtomPlugin(), HtmlNewsPlugin(), XPlugin()])
+    # Shares copy only the settings that a plugin declares in its config schema.
+    share_keys: dict[str, frozenset[str]] = {}
+    for plugin in manager.list():
+        properties = plugin.config_schema.get("properties", {})
+        if not isinstance(properties, dict):
+            raise TypeError(f"plugin {plugin.key} has an invalid config schema")
+        share_keys[plugin.key] = frozenset(properties)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -314,6 +325,23 @@ def create_app() -> FastAPI:
     def delete_profile(name: str, identity: CurrentIdentity) -> None:
         store.delete_profile(name, identity.owner_id)
 
+    @app.post("/shares", response_model=Share)
+    def create_share(body: ShareCreate, identity: CurrentIdentity) -> Share:
+        return store.share_profile(body.profile, identity.owner_id, identity.login)
+
+    @app.delete("/shares/{token}", status_code=204)
+    def delete_share(token: str, identity: CurrentIdentity) -> None:
+        store.unshare_profile(token, identity.owner_id)
+
+    # The share link itself is the capability: reading needs no identity and shows only public source settings.
+    @app.get("/shares/{token}", response_model=SharedProfile)
+    def shared_profile(token: str) -> SharedProfile:
+        return store.get_shared_profile(token, share_keys)
+
+    @app.post("/shares/{token}/import", response_model=ShareImportResult)
+    def import_share(token: str, body: ProfileCreate, identity: CurrentIdentity) -> ShareImportResult:
+        return store.import_shared_profile(token, body.name, identity.owner_id, share_keys)
+
     @app.get("/sources", response_model=list[Source])
     def sources(identity: CurrentIdentity, enabled: bool | None = None) -> list[Source]:
         return store.list_sources(enabled=enabled, owner_id=identity.owner_id)
@@ -477,6 +505,11 @@ def create_app() -> FastAPI:
         # The frontend renders the agent approval page for this path.
         @app.get("/connect", include_in_schema=False)
         def connect_page() -> FileResponse:
+            return FileResponse(index)
+
+        # The frontend renders the shared profile page for this path.
+        @app.get("/share/{token}", include_in_schema=False)
+        def share_page(token: str) -> FileResponse:
             return FileResponse(index)
 
         app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")

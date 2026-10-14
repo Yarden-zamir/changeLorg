@@ -137,7 +137,15 @@ export async function api<T>(path: string, options: { owner: string | null; meth
 }
 
 export type Identity = { id: string; authenticated: boolean; login: string | null; auth_enabled: boolean; anonymous_has_data: boolean };
-export type Profile = { name: string; source_count: number };
+export type Profile = { name: string; source_count: number; share_token: string | null };
+// Profile sharing: frontend/API.md "Shared Profiles".
+export type Share = { token: string; profile: string };
+export type SharedProfile = { name: string; shared_by: string | null; sources: { name: string; plugin: string; config: Record<string, unknown> }[] };
+export type ShareImportResult = { profile: string; sources: number; skipped: number; changes: number };
+
+export function shareUrl(token: string) {
+  return `${window.location.origin}/share/${encodeURIComponent(token)}`;
+}
 export type SourceCreate = { name: string; plugin: string; config: Record<string, unknown>; enabled: boolean };
 export type Source = SourceCreate & { config: Record<string, unknown> & { profile: string }; id: number; owner_id: string; created_at: string; updated_at: string };
 export type Plugin = { key: string; name: string; description: string; config_schema: { properties?: Record<string, { enum?: unknown[] }> } };
