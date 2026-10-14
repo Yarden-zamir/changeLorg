@@ -12,6 +12,7 @@ changelorg provides:
 - A uv Python Typer CLI.
 - A local Python plugin system for adding new source types.
 - A React feed and source editor with URL/GitHub feed discovery, saved-source search, optional catalog suggestions, previews, and explicit profile saves.
+- Share links for profiles. Another person opens the link and imports the sources, with the last 30 days of items, into a feed of their own.
 
 ## Quick Start
 

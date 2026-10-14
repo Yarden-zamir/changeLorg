@@ -42,8 +42,8 @@ This migration is irreversible without an external copy. A SQLite-only release c
 - The same public URL under different owners represents separate private subscriptions and changes.
 - Owner data includes profiles, sources, cached changes, dismissed flags, shelf flags, and notes.
 - Source deletion explicitly removes its changes and state in one transaction.
-- Profile deletion explicitly removes its sources, changes, and state in one transaction.
-- Profile rename updates source membership in the same transaction.
+- Profile deletion explicitly removes its sources, changes, state, and share link in one transaction.
+- Profile rename updates source membership and its share link in the same transaction.
 - Disable preserves cached data and state but excludes the source from API feeds and all refresh paths.
 - Public requests pass the resolved owner explicitly. They never use a default owner or the store's `owner_id=None` scope.
 - Only internal scheduled refreshes use the all-owner scope. Public responses never expose cross-owner refresh details.
@@ -143,7 +143,7 @@ Agents and scripts read account data with an agent token. The device flow of RFC
 11. The agent polls `POST /agent/token` with the device code, no faster than `interval` seconds. Pending and failed polls return HTTP `400` with an RFC 8628 `error` value: `authorization_pending`, `slow_down`, `access_denied`, `expired_token`, or `invalid_grant`.
 12. After approval, the next poll returns the token once and deletes the request. Later polls with that device code return `invalid_grant`.
 13. A token is `clg_` plus 43 URL-safe characters from 32 random bytes. The server stores its SHA-256 hash, owner, GitHub login, client name, scope, creation time, and last use time.
-14. A `read` token can use `GET` routes for the token owner. A `write` token can also use `POST`, `PATCH`, and `DELETE` routes for the owner's profiles, sources, and changes. Other requests return `403`, except `DELETE /agent/token`, which revokes the token of that request. No token can use the import routes or the agent approval and token management routes.
+14. A `read` token can use `GET` routes for the token owner. A `write` token can also use `POST`, `PATCH`, and `DELETE` routes for the owner's profiles, sources, changes, and shares, and can import a shared profile. Other requests return `403`, except `DELETE /agent/token`, which revokes the token of that request. No token can use the browser import routes `POST /me/import` and `POST /me/import-state` or the agent approval and token management routes.
 15. Agents send `Authorization: Bearer clg_...`. The server checks this token before cookies. Other `Authorization` values grant nothing and leave the browser rules unchanged.
 16. A request with an agent token and also a session cookie or `X-Anonymous-Token` returns `400`.
 17. An unknown, revoked, or expired agent token returns `401`. The server never falls back to another identity.
@@ -154,6 +154,25 @@ Agents and scripts read account data with an agent token. The device flow of RFC
 22. Only GitHub owners can approve requests and own tokens. Anonymous owners cannot approve.
 23. Logs exclude raw agent tokens and device codes. All agent access responses use `Cache-Control: private, no-store`.
 24. Caddy removes client `Authorization` headers only on `/auth/*` routes. oauth2-proxy never receives agent tokens; the app does.
+
+## Profile Sharing
+
+An owner shares the sources of a profile through a link. Another person imports them to start a feed.
+
+1. `POST /shares` with `{"profile": name}` creates the share link of an owner profile, or returns the existing one. A profile has at most one share link. An unknown profile returns `404`.
+2. A share token has 22 URL-safe characters from 16 random bytes. It is a link capability, not an account credential.
+3. The server stores share tokens in plain text, so the owner can see and copy the link again. A token reveals only the data in item 5.
+4. A share follows its profile. Later source changes show in the link, a profile rename keeps the link, and profile deletion ends it.
+5. `GET /shares/{token}` needs no identity. It returns the profile name, the sharer's GitHub login or `null`, and each enabled source with name, plugin, and config.
+6. A shared config contains only keys that the plugin declares in its config schema, without `profile`. Sources of an unknown plugin stay out.
+7. Source IDs, owner IDs, disabled sources, changes, dismissed flags, shelf flags, and notes never appear in a share.
+8. `DELETE /shares/{token}` ends a share. Only its owner can end it. Another owner gets `404`.
+9. `POST /shares/{token}/import` with `{"name": profile}` copies the shared sources into that profile of the requesting owner. It creates the profile when it does not exist.
+10. Anonymous owners, GitHub owners, and `write` agent tokens can import. A request without an identity returns `401`.
+11. For each new source, the import copies the cached changes of the last 30 days. Copied changes are not dismissed, not on the shelf, and have no note.
+12. A shared source that equals a source of the target profile (same plugin and config) is skipped. Repeated imports are idempotent.
+13. Source and profile limits apply. An import that passes a limit fails as a whole with `409` and writes nothing.
+14. An unknown or ended token returns `404` for read and for import.
 
 ## Request Safety
 

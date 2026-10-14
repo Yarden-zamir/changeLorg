@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, errorMessage, type Plugin, type Profile, type Source, type SourceCreate, type TimeWindow } from "../lib/api";
+import { api, errorMessage, shareUrl, type Plugin, type Profile, type Share, type Source, type SourceCreate, type TimeWindow } from "../lib/api";
 import { formatDate, renderedHtml, safeUrl, type Change } from "../lib/changes";
 import { discoveryUrl } from "../lib/sourceDiscovery";
 import { draftSignature, fetchSignature, normalizedSource, stringConfig, toDraft, type Draft } from "../lib/sourceDraft";
@@ -297,7 +297,7 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
     if (!name || name.length > 100) return;
     await api("/profiles", { owner, method: "POST", body: { name } });
     if (!active.current) return;
-    setProfiles((values) => [...values.filter((value) => value.name !== name), { name, source_count: 0 }]);
+    setProfiles((values) => [...values.filter((value) => value.name !== name), { name, source_count: 0, share_token: null }]);
     setProfileName("");
     setCreateOpen(false);
     if (select) setDraft((value) => value ? { ...value, source: { ...value.source, config: { ...value.source.config, profile: name } } } : value);
@@ -545,6 +545,28 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                   }, true),
                 })}>Delete</button>
               </div> : null}
+              {managedProfile ? <ShareControls
+                profile={managedProfile}
+                token={profiles.find((value) => value.name === managedProfile)?.share_token ?? null}
+                onShare={() => void run("Create share link", async () => {
+                  const created = await api<Share>("/shares", { owner, method: "POST", body: { profile: managedProfile } });
+                  if (!active.current) return;
+                  setProfiles((values) => values.map((value) => value.name === created.profile ? { ...value, share_token: created.token } : value));
+                  setMessage("Share link created. Anyone with the link can copy the enabled sources of this profile.");
+                  await sync();
+                }, true)}
+                onCopy={(link) => void run("Copy link", async () => {
+                  await navigator.clipboard.writeText(link);
+                  if (active.current) setMessage("Share link copied.");
+                })}
+                onStop={(token) => void run("Stop sharing", async () => {
+                  await api(`/shares/${encodeURIComponent(token)}`, { owner, method: "DELETE" });
+                  if (!active.current) return;
+                  setProfiles((values) => values.map((value) => value.share_token === token ? { ...value, share_token: null } : value));
+                  setMessage("Sharing stopped. The old link no longer works.");
+                  await sync();
+                }, true)}
+              /> : null}
             </div> : null}
           </div>
         </fieldset>
@@ -586,4 +608,21 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
       </dialog>
     </dialog>
   );
+}
+
+// Share link of one profile: frontend/API.md "Shared Profiles".
+function ShareControls({ profile, token, onShare, onCopy, onStop }: { profile: string; token: string | null; onShare: () => void; onCopy: (link: string) => void; onStop: (token: string) => void }) {
+  if (!token) return <div className="grid gap-2 border-t-2 border-raised pt-3">
+    <p className="text-sm leading-6">Share "{profile}" with a link. Anyone with the link can see and copy its enabled sources. Your read marks, shelf, and notes stay private.</p>
+    <button type="button" className="editor-button w-fit" onClick={onShare}>Create share link</button>
+  </div>;
+  const link = shareUrl(token);
+  return <div className="grid gap-2 border-t-2 border-raised pt-3">
+    <label className="min-w-0">Share link<input readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></label>
+    <p className="text-xs leading-5 text-muted">Anyone with this link can see and copy the enabled sources of "{profile}". The link follows later changes to the profile.</p>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" className="editor-button" onClick={() => onCopy(link)}>Copy link</button>
+      <button type="button" className="editor-button text-error-fg" onClick={() => onStop(token)}>Stop sharing</button>
+    </div>
+  </div>;
 }
