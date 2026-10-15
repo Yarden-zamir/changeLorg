@@ -320,6 +320,7 @@ Behavior:
 - Mutations require `X-Changelorg-Request: 1` and an explicit allowed origin for browser requests.
 - Mutation bodies have a 2 MiB limit, including requests without `Content-Length`.
 - CORS uses an explicit origin allowlist, credentials, and all three custom headers from the frontend contract. Wildcard origins are forbidden.
+- The deployed allowlist includes `https://news.yarden-zamir.com`. Its pages read `/me` and `/changes`, and change `dismissed` and `saved` of signed-in readers. The proxy may redirect to that host after sign-in and sign-out.
 - Private responses use `Cache-Control: private, no-store`.
 - Versioned frontend assets under `/assets/` use public immutable caching for one year; HTML and private API responses remain uncached by HTTP caches.
 - The browser keeps up to 32 account/token/path-scoped read results in memory for 15 seconds. Writes, account changes, and explicit reloads invalidate them; late pre-invalidation reads cannot refill the cache.

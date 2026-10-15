@@ -50,6 +50,7 @@ before doing so, or Caddy will reject the duplicate site definition.
 - Prod login needs both `COMPOSE_PROFILES=github-auth` and `CHANGELORG_AUTH_ENABLED=true`. Previews run without login by default.
 - The proxy session cookie lasts 30 days. Caddy removes client `Authorization` headers only on `/auth/*`, so agent tokens reach the app and never reach oauth2-proxy.
 - Agent approval needs GitHub sign-in. A preview without login cannot approve agents.
+- The news site `https://news.yarden-zamir.com` syncs reader state from the browser. `compose.yml` puts it in the default of `CHANGELORG_CORS_ORIGINS`, and lets oauth2-proxy redirect to it (`--whitelist-domain`). A `KITSHN_CHANGELORG_CORS_ORIGINS` value replaces that default, so it must list the news origin too.
 
 ## Badge
 

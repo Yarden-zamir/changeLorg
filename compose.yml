@@ -16,7 +16,8 @@ services:
       CHANGELORG_AUTH_ENABLED: ${CHANGELORG_AUTH_ENABLED:-false}
       CHANGELORG_OAUTH2_PROXY_URL: http://oauth2-proxy:4180
       CHANGELORG_PUBLIC_ORIGIN: ${CHANGELORG_PUBLIC_ORIGIN:-}
-      CHANGELORG_CORS_ORIGINS: ${CHANGELORG_CORS_ORIGINS:-}
+      # The news site reads and changes the state of signed-in readers from the browser.
+      CHANGELORG_CORS_ORIGINS: ${CHANGELORG_CORS_ORIGINS:-https://news.yarden-zamir.com}
       CHANGELORG_AUTO_REFRESH: "true"
       CHANGELORG_REFRESH_INTERVAL_SECONDS: "3600"
       CHANGELORG_REFRESH_WINDOW: "30d"
@@ -39,6 +40,8 @@ services:
       - --provider=github
       - --proxy-prefix=/auth
       - --redirect-url=${CHANGELORG_PUBLIC_ORIGIN:-https://changelorg.yarden-zamir.com}/auth/callback
+      # Sign-in and sign-out may return to the news site, which links to /auth/start?rd=<its page>.
+      - --whitelist-domain=news.yarden-zamir.com
       - --reverse-proxy=true
       - --email-domain=*
       - --set-xauthrequest=true

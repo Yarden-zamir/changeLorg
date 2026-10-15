@@ -103,7 +103,7 @@ The proxy accepts any GitHub user; inbound identity headers never establish an a
 
 Previews default to authentication disabled and need no OAuth credentials.
 The API origin is configurable through `CHANGELORG_PUBLIC_ORIGIN`.
-`CHANGELORG_CORS_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173` for development.
+`CHANGELORG_CORS_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173` for development. The deployment default is `https://news.yarden-zamir.com`, the news site that syncs reader state.
 See [KitSHn prerequisites and auth contract](kitshn.md) for production parameters, callback setup, and preview isolation.
 
 ## Agent Access
