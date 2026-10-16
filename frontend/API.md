@@ -9,8 +9,8 @@ The editor rules define approved behavior, not proof of tests or deployment. The
 1. Except for session reset, every API request includes `X-Anonymous-Token` with a persistent UUIDv4 from browser `localStorage`.
 2. Every network API request includes cookies through `credentials: "include"` and bypasses the HTTP browser cache. Successful profiles, sources, plugins, catalog, and changes reads have a bounded 15-second in-memory cache keyed by owner, browser token, and exact path. Writes invalidate it before and after requests, and account changes or explicit reloads clear it. Entries never persist to browser storage.
 3. `GET /me` resolves the current owner before the frontend accesses account data.
-4. Except for session reset, every subsequent API request includes `X-Changelorg-Owner` with the exact `id` from `/me`.
-5. Every `POST`, `PATCH`, and `DELETE` includes `X-Changelorg-Request: 1`.
+4. Except for session reset, every subsequent API request includes `X-Riffle-Owner` with the exact `id` from `/me`.
+5. Every `POST`, `PATCH`, and `DELETE` includes `X-Riffle-Request: 1`.
 6. JSON request bodies use `Content-Type: application/json`.
 7. Before any account access, the server compares the owner header with the current request identity.
 8. On an owner mismatch, the server returns `412` without any mutation. It never redirects the mutation into an anonymous account.
@@ -24,8 +24,8 @@ The authentication proxy handles `/auth/start?rd=/` and `/auth/sign_out?rd=/` as
 ## Session Recovery
 
 1. `POST /session/reset` requires no identity, anonymous token, or owner header. It works even when OAuth is disabled.
-2. The request requires `X-Changelorg-Request: 1` for CSRF protection and includes cookies through `credentials: "include"`.
-3. The server returns `204` and clears all `_changelorg_oauth` cookies, including session chunks and CSRF cookies.
+2. The request requires `X-Riffle-Request: 1` for CSRF protection and includes cookies through `credentials: "include"`.
+3. The server returns `204` and clears all `_riffle_oauth` cookies, including session chunks and CSRF cookies.
 4. The exported `resetSession()` helper fetches the configured API origin, bypasses the cache, and rejects redirects or responses other than `204`.
 5. The helper does not read or modify browser storage. Reset never modifies anonymous tokens or account data.
 6. The account error screen offers `Continue anonymously` as its primary recovery action, plus account retry and `/auth/start?rd=/`.

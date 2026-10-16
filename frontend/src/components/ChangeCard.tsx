@@ -36,7 +36,7 @@ function RenderedText({ value }: { value: string }) {
   if (!value.trim()) {
     return null;
   }
-  return <div className="changelorg-rendered text-[0.95rem] leading-7 text-ink" dangerouslySetInnerHTML={{ __html: renderedHtml(value) }} />;
+  return <div className="riffle-rendered text-[0.95rem] leading-7 text-ink" dangerouslySetInnerHTML={{ __html: renderedHtml(value) }} />;
 }
 
 export function ChangeCard({ change, location, focused, pending, noteDraft, noteOpen, onFocus, onClear, onToggleShelf, onSaveNote, onSourceFilter, onToggleNote, onUpdateDraft }: ChangeCardProps) {

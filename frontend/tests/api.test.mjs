@@ -60,7 +60,7 @@ test("session reset uses same-origin cookies and CSRF without identity or browse
   const [path, options] = fetch.mock.calls[0].arguments;
   assert.equal(path, "/session/reset");
   assert.equal(options.method, "POST");
-  assert.deepEqual(options.headers, { "X-Changelorg-Request": "1" });
+  assert.deepEqual(options.headers, { "X-Riffle-Request": "1" });
   assert.equal(options.credentials, "include");
   assert.equal(options.cache, "no-store");
   assert.equal(options.redirect, "error");
@@ -75,7 +75,7 @@ test("session reset preserves absent or invalid anonymous tokens and browser dat
   t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 204 }));
   for (const value of [null, "invalid-token", token]) {
     storage.clear();
-    storage.set("changelorg:user-state:v1", "private browser data");
+    storage.set("riffle:user-state:v1", "private browser data");
     if (value !== null) storage.set(anonymousTokenKey, value);
     const before = new Map(storage);
     await resetSession();
@@ -118,14 +118,14 @@ test("sends credentials, UUIDv4, owner, and mutation marker with no cache", asyn
   for (const method of ["GET", "POST", "PATCH", "DELETE"]) {
     await api("/sources", { owner: identity.id, method, ...(method === "PATCH" ? { body: { enabled: false } } : {}) });
   }
-  assert.equal(calls[0].options.headers["X-Changelorg-Owner"], undefined);
+  assert.equal(calls[0].options.headers["X-Riffle-Owner"], undefined);
   for (const { options } of calls) {
     assert.equal(options.headers["X-Anonymous-Token"], token);
     assert.equal(options.credentials, "include");
     assert.equal(options.cache, "no-store");
-    assert.equal(options.headers["X-Changelorg-Request"], options.method === "GET" ? undefined : "1");
+    assert.equal(options.headers["X-Riffle-Request"], options.method === "GET" ? undefined : "1");
   }
-  for (const { options } of calls.slice(1)) assert.equal(options.headers["X-Changelorg-Owner"], identity.id);
+  for (const { options } of calls.slice(1)) assert.equal(options.headers["X-Riffle-Owner"], identity.id);
   assert.deepEqual(JSON.parse(calls[3].options.body), { enabled: false });
   assert.equal(calls[3].options.headers["Content-Type"], "application/json");
 });
@@ -144,8 +144,8 @@ test("discovery and profileless preview use owner-bound POST requests with CSRF"
   assert.equal(fetch.mock.callCount(), 2);
   for (const { arguments: [, options] } of fetch.mock.calls) {
     assert.equal(options.method, "POST");
-    assert.equal(options.headers["X-Changelorg-Owner"], identity.id);
-    assert.equal(options.headers["X-Changelorg-Request"], "1");
+    assert.equal(options.headers["X-Riffle-Owner"], identity.id);
+    assert.equal(options.headers["X-Riffle-Request"], "1");
     assert.equal(options.credentials, "include");
     assert.equal(options.cache, "no-store");
     assert.ok(options.signal instanceof AbortSignal);

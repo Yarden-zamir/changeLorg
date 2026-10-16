@@ -1,12 +1,12 @@
-# changelorg
+# Riffle
 
-[![kitshn](https://kitshn.yarden-zamir.com/b/Yarden-zamir/changeLorg.svg)](https://changelorg.yarden-zamir.com)
+[![kitshn](https://kitshn.yarden-zamir.com/b/Yarden-zamir/riffle.svg)](https://riffle.yarden-zamir.com)
 
 Paste X/Twitter or Bluesky profile/post links into source discovery to follow an account without API keys. X uses its public embedded timeline, which may be unavailable or rate-limited; Bluesky uses public RSS. Social subscriptions produce one card per post and retain the usual profile, shelf, note, and read-state controls.
 
 Personal changelog and news tracker with durable profiles, source subscriptions, and GitHub or anonymous browser identity.
 
-changelorg provides:
+Riffle provides:
 
 - A uv Python FastAPI backend.
 - A uv Python Typer CLI.
@@ -18,10 +18,10 @@ changelorg provides:
 
 ```sh
 uv sync
-uv run changelorg init
-uv run changelorg sources add-rss "GitHub Blog Changelog" "https://github.blog/changelog/feed/"
-uv run changelorg changes generate --since 7d
-uv run changelorg serve --reload
+uv run riffle init
+uv run riffle sources add-rss "GitHub Blog Changelog" "https://github.blog/changelog/feed/"
+uv run riffle changes generate --since 7d
+uv run riffle serve --reload
 ```
 
 The API runs at `http://127.0.0.1:8000` by default.
@@ -89,21 +89,21 @@ See [Interface Checks](frontend/API.md#interface-checks) for the full check list
 
 ## Storage and Deployment
 
-The backend uses embedded DuckDB 1.5.5. The container stores its database at `/data/changelorg.duckdb` on the persistent KitSHn data mount.
+The backend uses embedded DuckDB 1.5.5. The container stores its database at `/data/riffle.duckdb` on the persistent KitSHn data mount.
 Run one app container with one Uvicorn process. Do not run the CLI against the live database.
 
-Startup imports an existing `changelorg.db` when `changelorg.duckdb` does not exist.
+Startup imports an existing `riffle.db` when `riffle.duckdb` does not exist.
 After success, it deletes the SQLite file and its journal files without a backup.
 Stop old app processes before this migration. A SQLite-only release cannot use the migrated database.
 
 GitHub authentication uses the optional `github-auth` Compose profile.
-Production requires `COMPOSE_PROFILES=github-auth`, `CHANGELORG_AUTH_ENABLED=true`, and OAuth credentials.
+Production requires `COMPOSE_PROFILES=github-auth`, `RIFFLE_AUTH_ENABLED=true`, and OAuth credentials.
 The API verifies proxy cookies and resolves numeric GitHub account IDs. Verify a real OAuth login before production use.
 The proxy accepts any GitHub user; inbound identity headers never establish an account.
 
 Previews default to authentication disabled and need no OAuth credentials.
-The API origin is configurable through `CHANGELORG_PUBLIC_ORIGIN`.
-`CHANGELORG_CORS_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173` for development. The deployment default is `https://news.yarden-zamir.com`, the news site that syncs reader state.
+The API origin is configurable through `RIFFLE_PUBLIC_ORIGIN`.
+`RIFFLE_CORS_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173` for development. The deployment default is `https://news.yarden-zamir.com,https://the-riffle.yarden-zamir.com`, the two hosts of the news site that syncs reader state.
 See [KitSHn prerequisites and auth contract](kitshn.md) for production parameters, callback setup, and preview isolation.
 
 ## Agent Access
@@ -111,23 +111,23 @@ See [KitSHn prerequisites and auth contract](kitshn.md) for production parameter
 Agents and scripts use a GitHub account's data with an agent token. The owner approves each agent once in the browser. Tokens read only, unless the agent asks for write access with `--write`.
 
 ```sh
-uvx --from git+https://github.com/Yarden-zamir/changeLorg changelorg auth login --name "Claude on my-mac"
+uvx --from git+https://github.com/Yarden-zamir/riffle riffle auth login --name "Claude on my-mac"
 # Open the printed link, compare the code, and approve.
-uvx --from git+https://github.com/Yarden-zamir/changeLorg changelorg api "/changes?profile=dev&since=10d&include_dismissed=true&limit=500"
+uvx --from git+https://github.com/Yarden-zamir/riffle riffle api "/changes?profile=dev&since=10d&include_dismissed=true&limit=500"
 ```
 
 - `auth login` prints the approval link and waits up to 10 minutes. `auth status` exits `0` while the saved token works.
 - With a write token, `api -X PATCH /changes/12 -d '{"saved": true}'` changes data.
-- The token lives in `~/.config/changelorg/credentials.json` with mode `0600`. It ends 90 days after its last use.
+- The token lives in `~/.config/riffle/credentials.json` with mode `0600`. It ends 90 days after its last use.
 - The GitHub account menu lists connected agents and revokes them. `auth logout` revokes the token from the agent side.
-- `--server` or `CHANGELORG_SERVER` selects another server. See [Agent Access](docs/user-data.md#agent-access).
+- `--server` or `RIFFLE_SERVER` selects another server. See [Agent Access](docs/user-data.md#agent-access).
 
 ## Plugin Directories
 
 Local plugins are loaded from:
 
 - `./plugins`
-- `~/.config/changelorg/plugins`
-- Paths in `CHANGELORG_PLUGIN_PATH`, separated by the OS path separator
+- `~/.config/riffle/plugins`
+- Paths in `RIFFLE_PLUGIN_PATH`, separated by the OS path separator
 
 See `docs/spec.md` for the full behavior and plugin contract.

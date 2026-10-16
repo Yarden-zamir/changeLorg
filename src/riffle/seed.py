@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from changelorg.models import SourceCreate
-from changelorg.store import seed_sources_once
+from riffle.models import SourceCreate
+from riffle.store import seed_sources_once
 
 THE_FINALS_SOURCE = SourceCreate(
     name="THE FINALS Patch Notes",

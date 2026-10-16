@@ -437,7 +437,7 @@ export function SourceEditor({ owner, profiles: suppliedProfiles, onChanged, onC
                   <div className="editor-preview-items grid gap-3">{preview.changes.slice(0, 10).map((change, index) => <article key={index} className="min-w-0 rounded border-2 border-line bg-raised p-4">
                     <p className="text-xs text-muted">{formatDate(change.published_at)}</p>
                     <h5 className="mt-2 text-xl font-extrabold">{safeUrl(change.url) ? <a href={safeUrl(change.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">{change.title}</a> : change.title}</h5>
-                    <div className="changelorg-rendered mt-3 max-h-64 overflow-auto text-sm leading-6" dangerouslySetInnerHTML={{ __html: renderedHtml(change.content || change.summary) }} />
+                    <div className="riffle-rendered mt-3 max-h-64 overflow-auto text-sm leading-6" dangerouslySetInnerHTML={{ __html: renderedHtml(change.content || change.summary) }} />
                   </article>)}</div>
                 </section> : <p className="editor-notice">No current preview. Preview this source before you save. No profile is required.</p>}
                 {["rss-atom", "x"].includes(draft.source.plugin) ? <details open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)} className="border-t-2 border-raised pt-3">

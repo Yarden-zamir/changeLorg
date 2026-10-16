@@ -6,8 +6,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Protocol
 
-from changelorg.config import plugin_dirs
-from changelorg.models import ChangeInput, PluginInfo, Source, TimeWindow
+from riffle.config import plugin_dirs
+from riffle.models import ChangeInput, PluginInfo, Source, TimeWindow
 
 
 class PluginError(Exception):
@@ -63,7 +63,7 @@ class PluginManager:
 
 
 def _load_module(path: Path) -> ModuleType:
-    module_name = f"changelorg_local_plugin_{abs(hash(path))}"
+    module_name = f"riffle_local_plugin_{abs(hash(path))}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise PluginError(f"could not load plugin module from {path}")
@@ -98,9 +98,9 @@ def load_local_plugins(directories: list[Path] | None = None) -> list[SourcePlug
 
 
 def default_plugin_manager() -> PluginManager:
-    from changelorg.plugins.html_news import HtmlNewsPlugin
-    from changelorg.plugins.rss_atom import RssAtomPlugin
-    from changelorg.plugins.x import XPlugin
+    from riffle.plugins.html_news import HtmlNewsPlugin
+    from riffle.plugins.rss_atom import RssAtomPlugin
+    from riffle.plugins.x import XPlugin
 
     manager = PluginManager([RssAtomPlugin(), HtmlNewsPlugin(), XPlugin()])
     for plugin in load_local_plugins():

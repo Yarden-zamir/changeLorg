@@ -42,15 +42,18 @@ before doing so, or Caddy will reject the duplicate site definition.
 ## This Recipe
 
 - Services: `app` (FastAPI and the built frontend) and `socket-proxy` (socat from the KitSHn socket to `app`). The `github-auth` Compose profile adds `oauth2-proxy` and `auth-socket-proxy`.
-- `app` keeps DuckDB at `/data/changelorg.duckdb`, from `${KITSHN_DATA_DIR}/data`. Run one container with one Uvicorn worker only.
+- `app` keeps DuckDB at `/data/riffle.duckdb`, from `${KITSHN_DATA_DIR}/data`. Run one container with one Uvicorn worker only.
 - Environments: `prod` from a push to `main`, and an ephemeral `pr-<number>` for each pull request.
-- Hostnames: `changelorg.yarden-zamir.com` for prod, `pr-<number>.changelorg.yarden-zamir.com` for previews.
-- Variables: `KITSHN_COMPOSE_PROFILES`, `KITSHN_CHANGELORG_AUTH_ENABLED`, `KITSHN_OAUTH2_PROXY_CLIENT_ID`, and optional `KITSHN_CHANGELORG_PUBLIC_ORIGIN`, `KITSHN_CHANGELORG_CORS_ORIGINS`.
+- Hostnames: `riffle.yarden-zamir.com` for prod, `pr-<number>.riffle.yarden-zamir.com` for previews.
+- Variables: `KITSHN_COMPOSE_PROFILES`, `KITSHN_RIFFLE_AUTH_ENABLED`, `KITSHN_OAUTH2_PROXY_CLIENT_ID`, and optional `KITSHN_RIFFLE_PUBLIC_ORIGIN`, `KITSHN_RIFFLE_CORS_ORIGINS`.
 - Secrets: `KITSHN_OAUTH2_PROXY_CLIENT_SECRET`, `KITSHN_OAUTH2_PROXY_COOKIE_SECRET` (URL-safe base64).
-- Prod login needs both `COMPOSE_PROFILES=github-auth` and `CHANGELORG_AUTH_ENABLED=true`. Previews run without login by default.
+- Prod login needs both `COMPOSE_PROFILES=github-auth` and `RIFFLE_AUTH_ENABLED=true`. Previews run without login by default.
+- Sign-in uses the GitHub App `riffle-yarden-zamir`, made through the manifest flow. Its callback URL is `https://riffle.yarden-zamir.com/auth/callback`, and it has the account permission Email addresses: read, which oauth2-proxy needs.
+- Turn off "Expire user authorization tokens" in the GitHub App settings. The proxy never refreshes a token (`--cookie-refresh=0`), and the app checks each token against GitHub `/user`. With expiring tokens, readers sign in again after 8 hours.
+- Prod also answers on `changelorg.yarden-zamir.com`, the old name, with a 308 redirect to the same path on `riffle.yarden-zamir.com`.
 - The proxy session cookie lasts 30 days. Caddy removes client `Authorization` headers only on `/auth/*`, so agent tokens reach the app and never reach oauth2-proxy.
 - Agent approval needs GitHub sign-in. A preview without login cannot approve agents.
-- The news site `https://news.yarden-zamir.com` syncs reader state from the browser. `compose.yml` puts it in the default of `CHANGELORG_CORS_ORIGINS`, and lets oauth2-proxy redirect to it (`--whitelist-domain`). A `KITSHN_CHANGELORG_CORS_ORIGINS` value replaces that default, so it must list the news origin too.
+- The news site syncs reader state from the browser. It has two hosts, `https://news.yarden-zamir.com` and `https://the-riffle.yarden-zamir.com`. `compose.yml` puts both in the default of `RIFFLE_CORS_ORIGINS`, and lets oauth2-proxy redirect to them (`--whitelist-domain`). A `KITSHN_RIFFLE_CORS_ORIGINS` value replaces that default, so it must list both news origins too.
 
 ## Badge
 
@@ -58,7 +61,7 @@ The badge above shows that this repo deploys with KitSHn. For the state of the l
 deploy in the README, use this line.
 
 ```markdown
-[![kitshn prod](https://img.shields.io/github/deployments/Yarden-zamir/changeLorg/prod?label=kitshn%20%C2%B7%20prod&labelColor=2F3532&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNCAxNCI+PGcgZmlsbD0iI2ZmZiI+PHJlY3QgeD0iNiIgeT0iMS4yIiB3aWR0aD0iMiIgaGVpZ2h0PSIxLjYiIHJ4PSIwLjUiLz48cmVjdCB4PSIyLjIiIHk9IjMuNCIgd2lkdGg9IjkuNiIgaGVpZ2h0PSIxLjUiIHJ4PSIwLjc1Ii8+PHJlY3QgeD0iMyIgeT0iNS42IiB3aWR0aD0iOCIgaGVpZ2h0PSI2LjYiIHJ4PSIxLjYiLz48cmVjdCB4PSIwLjgiIHk9IjYuOCIgd2lkdGg9IjIuNCIgaGVpZ2h0PSIxLjQiIHJ4PSIwLjciLz48cmVjdCB4PSIxMC44IiB5PSI2LjgiIHdpZHRoPSIyLjQiIGhlaWdodD0iMS40IiByeD0iMC43Ii8+PC9nPjwvc3ZnPgo=)](https://changelorg.yarden-zamir.com)
+[![kitshn prod](https://img.shields.io/github/deployments/Yarden-zamir/riffle/prod?label=kitshn%20%C2%B7%20prod&labelColor=2F3532&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNCAxNCI+PGcgZmlsbD0iI2ZmZiI+PHJlY3QgeD0iNiIgeT0iMS4yIiB3aWR0aD0iMiIgaGVpZ2h0PSIxLjYiIHJ4PSIwLjUiLz48cmVjdCB4PSIyLjIiIHk9IjMuNCIgd2lkdGg9IjkuNiIgaGVpZ2h0PSIxLjUiIHJ4PSIwLjc1Ii8+PHJlY3QgeD0iMyIgeT0iNS42IiB3aWR0aD0iOCIgaGVpZ2h0PSI2LjYiIHJ4PSIxLjYiLz48cmVjdCB4PSIwLjgiIHk9IjYuOCIgd2lkdGg9IjIuNCIgaGVpZ2h0PSIxLjQiIHJ4PSIwLjciLz48cmVjdCB4PSIxMC44IiB5PSI2LjgiIHdpZHRoPSIyLjQiIGhlaWdodD0iMS40IiByeD0iMC43Ii8+PC9nPjwvc3ZnPgo=)](https://riffle.yarden-zamir.com)
 ```
 
 ## Origin

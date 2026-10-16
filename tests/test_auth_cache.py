@@ -17,11 +17,11 @@ def test_identity_cache_still_checks_proxy_and_refreshes_expired_entries(auth_cl
             )
         return httpx.Response(200, json={"id": 123, "login": "user"})
 
-    auth_client.cookies.set("_changelorg_oauth", "session")
+    auth_client.cookies.set("_riffle_oauth", "session")
     with httpx.Client(transport=httpx.MockTransport(upstream)) as client:
         auth_client.app.state.auth_client = client
         assert auth_client.get("/me").status_code == 200
-        headers = {"X-Changelorg-Owner": "github:123"}
+        headers = {"X-Riffle-Owner": "github:123"}
         for _ in range(3):
             assert auth_client.get("/profiles", headers=headers).status_code == 200
         assert calls.count("api.github.com") == 1

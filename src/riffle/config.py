@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-APP_NAME = "changelorg"
+APP_NAME = "riffle"
 
 
 def data_dir() -> Path:
-    configured = os.environ.get("CHANGELORG_DATA_DIR")
+    configured = os.environ.get("RIFFLE_DATA_DIR")
     if configured:
         return Path(configured).expanduser()
 
@@ -19,10 +19,10 @@ def data_dir() -> Path:
 
 
 def database_path() -> Path:
-    configured = os.environ.get("CHANGELORG_DB")
+    configured = os.environ.get("RIFFLE_DB")
     if configured:
         return Path(configured).expanduser()
-    return data_dir() / "changelorg.duckdb"
+    return data_dir() / "riffle.duckdb"
 
 
 def config_dir() -> Path:
@@ -32,7 +32,7 @@ def config_dir() -> Path:
 
 
 def credentials_path() -> Path:
-    configured = os.environ.get("CHANGELORG_CREDENTIALS")
+    configured = os.environ.get("RIFFLE_CREDENTIALS")
     if configured:
         return Path(configured).expanduser()
     return config_dir() / "credentials.json"
@@ -40,7 +40,7 @@ def credentials_path() -> Path:
 
 def plugin_dirs() -> list[Path]:
     dirs: list[Path] = []
-    configured = os.environ.get("CHANGELORG_PLUGIN_PATH")
+    configured = os.environ.get("RIFFLE_PLUGIN_PATH")
     if configured:
         dirs.extend(Path(part).expanduser() for part in configured.split(os.pathsep) if part)
 

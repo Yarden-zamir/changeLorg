@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from changelorg.models import (
+from riffle.models import (
     DEFAULT_OWNER_ID,
     GenerationError,
     GenerationResult,
     TimeWindow,
 )
-from changelorg.plugin import PluginManager, default_plugin_manager
-from changelorg.store import list_changes, list_sources, upsert_changes
+from riffle.plugin import PluginManager, default_plugin_manager
+from riffle.store import list_changes, list_sources, upsert_changes
 
 
 def generate_changes(

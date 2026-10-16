@@ -11,8 +11,8 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from changelorg import network
-from changelorg.network import (
+from riffle import network
+from riffle.network import (
     FetchBudgetExceeded,
     PublicFetcher,
     PublicFetchError,

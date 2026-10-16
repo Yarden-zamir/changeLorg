@@ -2,7 +2,7 @@ from datetime import timezone
 
 import pytest
 
-from changelorg.timeutils import parse_datetime, parse_duration, parse_window
+from riffle.timeutils import parse_datetime, parse_duration, parse_window
 
 
 def test_parse_datetime_accepts_date() -> None:

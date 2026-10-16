@@ -16,8 +16,8 @@ from uuid import uuid4
 
 import duckdb
 
-from changelorg.config import database_path
-from changelorg.models import (
+from riffle.config import database_path
+from riffle.models import (
     AGENT_MAX_PENDING_REQUESTS,
     AGENT_POLL_INTERVAL_SECONDS,
     AGENT_REQUEST_TTL,
@@ -278,8 +278,8 @@ def init_db(db_path: Path | None = None) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         if _is_sqlite(path):
             _migrate_sqlite(path, path)
-        elif not path.exists() and path.name == "changelorg.duckdb" and _is_sqlite(path.with_name("changelorg.db")):
-            _migrate_sqlite(path.with_name("changelorg.db"), path)
+        elif not path.exists() and path.name == "riffle.duckdb" and _is_sqlite(path.with_name("riffle.db")):
+            _migrate_sqlite(path.with_name("riffle.db"), path)
         with duckdb.connect(str(path)) as connection:
             connection.execute("BEGIN TRANSACTION")
             try:

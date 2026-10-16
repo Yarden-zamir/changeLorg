@@ -63,7 +63,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
       }, body: status === 204 ? "" : JSON.stringify(value) });
       if (method === "OPTIONS") return send({}, 204);
       if (url.pathname === "/me") return send({ id: state.owner, authenticated: true, login: "tester", auth_enabled: true, anonymous_has_data: false });
-      assert.equal(request.headers()["x-changelorg-owner"], state.owner);
+      assert.equal(request.headers()["x-riffle-owner"], state.owner);
       if (url.pathname === "/profiles") return send([{ name: "Work", source_count: 2 }, { name: "Other", source_count: 1 }]);
       if (["/sources", "/plugins", "/catalog"].includes(url.pathname) && method === "GET") return send([]);
       if (url.pathname === "/changes" && method === "GET") {
@@ -72,7 +72,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
           (!url.searchParams.has("source_id") || item.source_id === Number(url.searchParams.get("source_id")))));
       }
       assert.equal(method, "PATCH");
-      assert.equal(request.headers()["x-changelorg-request"], "1");
+      assert.equal(request.headers()["x-riffle-request"], "1");
       const id = Number(url.pathname.split("/")[2]);
       const body = request.postDataJSON();
       state.calls.push({ id, body, owner: state.owner });
@@ -110,7 +110,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
       assert.ok(window.y > profile.y);
       assert.equal(await page.getByLabel('Current feed selection').count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      const readingWidth = await card(page, 1).locator('.changelorg-rendered').evaluate((element) => element.getBoundingClientRect().width);
+      const readingWidth = await card(page, 1).locator('.riffle-rendered').evaluate((element) => element.getBoundingClientRect().width);
       assert.ok(readingWidth > width * 0.78, "Article text uses most of the mobile screen width");
       if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/compact-panel-${width}.png` });
     }
@@ -321,7 +321,7 @@ test("feed browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, timeout: 
     await card(page, 2).waitFor({ state: "detached" });
     if (transition === "account") {
       state.owner = "github:456";
-      await page.evaluate(() => window.dispatchEvent(new Event("changelorg:identity-invalidated")));
+      await page.evaluate(() => window.dispatchEvent(new Event("riffle:identity-invalidated")));
       await card(page, 1).waitFor();
     } else if (transition === "unmount") await page.evaluate(() => window.unmountFeed());
     else if (transition === "profile") await page.locator("#profile-select").selectOption("Other");

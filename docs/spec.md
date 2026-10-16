@@ -1,8 +1,8 @@
-# changelorg Behavior Spec
+# Riffle Behavior Spec
 
 ## Product Goal
 
-changelorg tracks source changes and generates private, time-windowed feeds for anonymous owners and GitHub accounts.
+Riffle tracks source changes and generates private, time-windowed feeds for anonymous owners and GitHub accounts.
 The website displays the feed. The CLI exports structured data for analysis and summaries.
 Agents read, and with write access also change, a GitHub account's data with an agent token after the owner approves them in the browser.
 An owner can share the sources of a profile through a link, so that another person can start a feed with them.
@@ -71,7 +71,7 @@ Behavior:
 
 - DuckDB stores changes durably under their source owner. Equal source URLs do not create shared data across owners.
 - Changes dedupe by `(source_id, external_id)`.
-- If a plugin does not provide `external_id`, changelorg derives one from source ID, URL, title, and publication time.
+- If a plugin does not provide `external_id`, Riffle derives one from source ID, URL, title, and publication time.
 - A refresh updates known changes: title, URL, text, publication time, fetched time, and metadata.
 - A refresh preserves `dismissed`, `saved`, `note`, and `state_updated_at`.
 - The backend owns this private state. Browser `localStorage` is not the state store.
@@ -104,8 +104,8 @@ Web requests never load local plugins or accept local overrides of built-in plug
 The trusted CLI loads built-in plugins first, then local plugins from:
 
 - `./plugins`
-- `~/.config/changelorg/plugins`
-- Paths in `CHANGELORG_PLUGIN_PATH`
+- `~/.config/riffle/plugins`
+- Paths in `RIFFLE_PLUGIN_PATH`
 
 Local plugin files:
 
@@ -242,30 +242,30 @@ Behavior:
 
 ## CLI Behavior
 
-Base command: `changelorg`.
+Base command: `riffle`.
 
 Commands:
 
-- `changelorg init`: Create the DuckDB schema or migrate the old SQLite database.
-- `changelorg plugins`: List available plugins and plugin directories.
-- `changelorg serve`: Run the FastAPI backend.
-- `changelorg sources add NAME --plugin KEY --config key=value`: Add any plugin-backed source.
-- `changelorg sources add-rss NAME URL`: Convenience command for RSS/Atom.
-- `changelorg sources list`: List sources.
-- `changelorg sources remove ID`: Delete a source.
-- `changelorg sources enable ID`: Enable a source.
-- `changelorg sources disable ID`: Disable a source.
-- `changelorg changes generate --since 7d`: Fetch enabled sources, cache results, and print changes.
-- `changelorg changes list`: Print cached changes without fetching.
-- `changelorg auth login [--name TEXT] [--write]`: Start agent access, print the approval link and code, wait for approval, and save the token. `--write` asks for write access; the default is read only.
-- `changelorg auth status`: Check the saved token through `GET /me`. Exit `0` when the token works, else exit `1`.
-- `changelorg auth logout`: Revoke the saved token on the server, then delete it locally.
-- `changelorg api [-X METHOD] [-d JSON] PATH`: Send an authenticated request to a server path and print the JSON response. The method defaults to `GET`.
+- `riffle init`: Create the DuckDB schema or migrate the old SQLite database.
+- `riffle plugins`: List available plugins and plugin directories.
+- `riffle serve`: Run the FastAPI backend.
+- `riffle sources add NAME --plugin KEY --config key=value`: Add any plugin-backed source.
+- `riffle sources add-rss NAME URL`: Convenience command for RSS/Atom.
+- `riffle sources list`: List sources.
+- `riffle sources remove ID`: Delete a source.
+- `riffle sources enable ID`: Enable a source.
+- `riffle sources disable ID`: Disable a source.
+- `riffle changes generate --since 7d`: Fetch enabled sources, cache results, and print changes.
+- `riffle changes list`: Print cached changes without fetching.
+- `riffle auth login [--name TEXT] [--write]`: Start agent access, print the approval link and code, wait for approval, and save the token. `--write` asks for write access; the default is read only.
+- `riffle auth status`: Check the saved token through `GET /me`. Exit `0` when the token works, else exit `1`.
+- `riffle auth logout`: Revoke the saved token on the server, then delete it locally.
+- `riffle api [-X METHOD] [-d JSON] PATH`: Send an authenticated request to a server path and print the JSON response. The method defaults to `GET`.
 
 Behavior:
 
-- `auth` and `api` commands talk to a server, not the local database. They use `--server`, then `CHANGELORG_SERVER`, then `https://changelorg.yarden-zamir.com`.
-- Saved tokens live in `credentials.json` under `$XDG_CONFIG_HOME/changelorg` or `~/.config/changelorg`, keyed by server origin, with file mode `0600`. `CHANGELORG_CREDENTIALS` overrides the path.
+- `auth` and `api` commands talk to a server, not the local database. They use `--server`, then `RIFFLE_SERVER`, then `https://riffle.yarden-zamir.com`.
+- Saved tokens live in `credentials.json` under `$XDG_CONFIG_HOME/riffle` or `~/.config/riffle`, keyed by server origin, with file mode `0600`. `RIFFLE_CREDENTIALS` overrides the path.
 - A failed approval, an expired request, or a rejected token exits non-zero with a message. It never prints the raw token.
 - `--db PATH` overrides the DuckDB database path.
 - `--owner ID` selects `github:<numeric-id>` or `anon:<sha256>`. The trusted CLI defaults to `github:8178413`.
@@ -306,7 +306,7 @@ Additional routes:
 - `GET /health`: Public service health without owner data.
 - `GET /sources/{source_id}`: Current owner's source only.
 - `GET /refresh/status`: No cross-owner source details or errors in public responses.
-- `POST /changes/generate`: Optional owner-scoped generation, disabled unless `CHANGELORG_MANUAL_GENERATE_API=true`.
+- `POST /changes/generate`: Optional owner-scoped generation, disabled unless `RIFFLE_MANUAL_GENERATE_API=true`.
 - `POST /agent/device`, `POST /agent/token`, `DELETE /agent/token`, `GET /agent/device/{user_code}`, `POST /agent/device/{user_code}/approve`, `POST /agent/device/{user_code}/deny`, `GET /agent/tokens`, and `DELETE /agent/tokens/{id}`: [Agent Access](user-data.md#agent-access).
 - `GET /connect`: The frontend page for agent approval.
 - `POST /shares`, `DELETE /shares/{token}`, `GET /shares/{token}`, and `POST /shares/{token}/import`: [Profile Sharing](user-data.md#profile-sharing).
@@ -315,12 +315,12 @@ Additional routes:
 Behavior:
 
 - Startup initializes DuckDB and migrates old SQLite data under the [User Data](user-data.md) contract.
-- `/me` resolves the request identity before account access. All later frontend requests carry the exact `X-Changelorg-Owner` value.
+- `/me` resolves the request identity before account access. All later frontend requests carry the exact `X-Riffle-Owner` value.
 - An owner mismatch returns `412` before account access or mutation. The server never redirects a mutation into another owner.
-- Mutations require `X-Changelorg-Request: 1` and an explicit allowed origin for browser requests.
+- Mutations require `X-Riffle-Request: 1` and an explicit allowed origin for browser requests.
 - Mutation bodies have a 2 MiB limit, including requests without `Content-Length`.
 - CORS uses an explicit origin allowlist, credentials, and all three custom headers from the frontend contract. Wildcard origins are forbidden.
-- The deployed allowlist includes `https://news.yarden-zamir.com`. Its pages read `/me` and `/changes`, and change `dismissed` and `saved` of signed-in readers. The proxy may redirect to that host after sign-in and sign-out.
+- The deployed allowlist includes `https://news.yarden-zamir.com` and `https://the-riffle.yarden-zamir.com`, the two hosts of the news site. Its pages read `/me` and `/changes`, and change `dismissed` and `saved` of signed-in readers. The proxy may redirect to these hosts after sign-in and sign-out.
 - Private responses use `Cache-Control: private, no-store`.
 - Versioned frontend assets under `/assets/` use public immutable caching for one year; HTML and private API responses remain uncached by HTTP caches.
 - The browser keeps up to 32 account/token/path-scoped read results in memory for 15 seconds. Writes, account changes, and explicit reloads invalidate them; late pre-invalidation reads cannot refill the cache.
@@ -471,7 +471,7 @@ Query parameters:
 - Embedded DuckDB 1.5.5 uses native `JSON`, `TIMESTAMPTZ`, and `BOOLEAN` columns, with sequences for source and change IDs.
 - One app container runs one Uvicorn worker. Database transactions serialize within that process; network fetches stay outside the database lock.
 - Revisit storage before multiple workers, replicas, or concurrent CLI database access.
-- `/data/changelorg.duckdb` uses the persistent `${KITSHN_DATA_DIR}/data` mount. No separate database service is required.
+- `/data/riffle.duckdb` uses the persistent `${KITSHN_DATA_DIR}/data` mount. No separate database service is required.
 - Optional GitHub authentication uses `oauth2-proxy`. The app verifies its cookie through the internal auth endpoint and GitHub `/user`.
 - The proxy session cookie lasts 30 days. Agent tokens expire 90 days after their last use.
 - The app never treats public identity headers as authentication. [User Data](user-data.md) defines the identity checks and token rules.

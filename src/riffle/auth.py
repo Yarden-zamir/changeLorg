@@ -9,8 +9,8 @@ import httpx
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
-from changelorg import store
-from changelorg.models import AgentScope, utc_now
+from riffle import store
+from riffle.models import AgentScope, utc_now
 
 AGENT_TOKEN_PREFIX = "clg_"
 
@@ -53,15 +53,15 @@ def hash_secret(value: str) -> str:
 def _has_session_cookie(request: Request) -> bool:
     # Proxy cookies can span numbered chunks.
     return any(
-        name == "_changelorg_oauth"
-        or name.startswith("_changelorg_oauth_")
-        and name.removeprefix("_changelorg_oauth_").isdecimal()
+        name == "_riffle_oauth"
+        or name.startswith("_riffle_oauth_")
+        and name.removeprefix("_riffle_oauth_").isdecimal()
         for name in request.cookies
     )
 
 
 def _bearer_agent_token(request: Request) -> str | None:
-    """Return a changelorg agent token. Other Authorization values grant nothing and stay ignored."""
+    """Return a riffle agent token. Other Authorization values grant nothing and stay ignored."""
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     value = value.strip()
     if scheme.lower() != "bearer" or not value.startswith(AGENT_TOKEN_PREFIX):
@@ -77,8 +77,8 @@ def _agent_identity(request: Request) -> Identity | None:
         raise HTTPException(400, "Send an agent token or a browser identity, not both")
     agent = store.resolve_agent_token(hash_secret(token), utc_now()) if token.isascii() else None
     if agent is None:
-        raise HTTPException(401, "The agent token is unknown, revoked, or expired. Run changelorg auth login.")
-    expected = request.headers.get("X-Changelorg-Owner")
+        raise HTTPException(401, "The agent token is unknown, revoked, or expired. Run riffle auth login.")
+    expected = request.headers.get("X-Riffle-Owner")
     if expected is not None and expected != agent.owner_id:
         raise HTTPException(412, "The active account changed")
     return Identity(agent.owner_id, agent.login, None, agent.id, agent.scope)
@@ -111,7 +111,7 @@ def request_identity(request: Request) -> Identity:
     agent = _agent_identity(request)
     if agent is not None:
         if request.method not in {"GET", "HEAD"} and agent.agent_scope != "write":
-            raise HTTPException(403, "This agent token can only read. Run changelorg auth login --write for write access.")
+            raise HTTPException(403, "This agent token can only read. Run riffle auth login --write for write access.")
         return agent
     anonymous = anonymous_owner(request.headers.get("X-Anonymous-Token"))
     login = None
@@ -166,7 +166,7 @@ def request_identity(request: Request) -> Identity:
         owner, login = f"github:{user.id}", user.login
     if owner is None:
         raise HTTPException(401, "A browser identity or GitHub session is required")
-    expected = request.headers.get("X-Changelorg-Owner")
+    expected = request.headers.get("X-Riffle-Owner")
     if expected is not None and expected != owner:
         raise HTTPException(412, "The active account changed")
     if request.url.path != "/me" and expected is None:

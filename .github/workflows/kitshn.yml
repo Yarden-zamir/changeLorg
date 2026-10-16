@@ -12,7 +12,7 @@ permissions:
   deployments: write
 
 concurrency:
-  group: changelorg-deploy
+  group: riffle-deploy
   cancel-in-progress: false
 
 jobs:

@@ -5,7 +5,7 @@ from string import ascii_letters, digits
 import feedparser
 import httpx
 
-from changelorg.network import PublicFetcher, PublicFetchError, validate_public_url
+from riffle.network import PublicFetcher, PublicFetchError, validate_public_url
 
 
 def github_release_repository(url: httpx.URL) -> str | None:

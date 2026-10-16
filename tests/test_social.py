@@ -5,9 +5,9 @@ from test_discovery import wire as wire
 from test_network import response
 from test_source_preview import source, window as window
 
-from changelorg.discovery import discover_sources, normalize_discovery_url
-from changelorg.network import validate_source_config
-from changelorg.plugins.x import XPlugin, XUnavailable
+from riffle.discovery import discover_sources, normalize_discovery_url
+from riffle.network import validate_source_config
+from riffle.plugins.x import XPlugin, XUnavailable
 
 
 @pytest.mark.parametrize(

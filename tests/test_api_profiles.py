@@ -7,9 +7,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from changelorg import store
-from changelorg.api import create_app
-from changelorg.models import (
+from riffle import store
+from riffle.api import create_app
+from riffle.models import (
     Change,
     ChangeInput,
     ChangeUpdate,
@@ -17,19 +17,19 @@ from changelorg.models import (
     TimeWindow,
     utc_now,
 )
-from changelorg.plugins.rss_atom import RssAtomPlugin
+from riffle.plugins.rss_atom import RssAtomPlugin
 
 
 @pytest.fixture
 def api_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CHANGELORG_DB", str(tmp_path / "changelorg.duckdb"))
-    monkeypatch.setenv("CHANGELORG_AUTO_REFRESH", "false")
-    monkeypatch.setenv("CHANGELORG_SEED_DEFAULT_SOURCES", "false")
-    monkeypatch.setenv("CHANGELORG_AUTH_ENABLED", "false")
-    monkeypatch.setenv("CHANGELORG_MANUAL_GENERATE_API", "false")
-    monkeypatch.setenv("CHANGELORG_CORS_ORIGINS", "http://localhost:5173")
-    monkeypatch.setenv("CHANGELORG_PUBLIC_ORIGIN", "https://changes.example.com")
-    monkeypatch.setenv("CHANGELORG_OAUTH2_PROXY_URL", "http://oauth2-proxy:4180")
+    monkeypatch.setenv("RIFFLE_DB", str(tmp_path / "riffle.duckdb"))
+    monkeypatch.setenv("RIFFLE_AUTO_REFRESH", "false")
+    monkeypatch.setenv("RIFFLE_SEED_DEFAULT_SOURCES", "false")
+    monkeypatch.setenv("RIFFLE_AUTH_ENABLED", "false")
+    monkeypatch.setenv("RIFFLE_MANUAL_GENERATE_API", "false")
+    monkeypatch.setenv("RIFFLE_CORS_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("RIFFLE_PUBLIC_ORIGIN", "https://changes.example.com")
+    monkeypatch.setenv("RIFFLE_OAUTH2_PROXY_URL", "http://oauth2-proxy:4180")
 
 
 @pytest.fixture
@@ -44,8 +44,8 @@ def owner_headers(client: TestClient, token: str | None = None) -> dict[str, str
     assert response.status_code == 200, response.text
     return {
         **headers,
-        "X-Changelorg-Owner": response.json()["id"],
-        "X-Changelorg-Request": "1",
+        "X-Riffle-Owner": response.json()["id"],
+        "X-Riffle-Request": "1",
     }
 
 
@@ -75,10 +75,10 @@ def seed_change(
 def test_profiles_and_profile_filtered_changes(api_client: TestClient) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     dev = seed_change(owner)
     games = seed_change(owner, "games")
-    seed_change(other["X-Changelorg-Owner"], "private")
+    seed_change(other["X-Riffle-Owner"], "private")
     assert (
         api_client.post(
             "/profiles", headers=headers, json={"name": "empty"}
@@ -108,9 +108,9 @@ def test_profile_rename_and_delete_only_affect_current_owner(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner, "same name")
-    foreign = seed_change(other["X-Changelorg-Owner"], "same name")
+    foreign = seed_change(other["X-Riffle-Owner"], "same name")
     store.update_change(
         change.id, ChangeUpdate(saved=True, note="private note"), owner_id=owner
     )
@@ -125,7 +125,7 @@ def test_profile_rename_and_delete_only_affect_current_owner(
     )
     assert (
         store.get_source(
-            foreign.source_id, owner_id=other["X-Changelorg-Owner"]
+            foreign.source_id, owner_id=other["X-Riffle-Owner"]
         ).config["profile"]
         == "same name"
     )
@@ -136,7 +136,7 @@ def test_profile_rename_and_delete_only_affect_current_owner(
     assert store.list_sources(owner_id=owner) == []
     assert store.list_changes(owner_id=owner, include_dismissed=True) == []
     assert store.list_profiles(owner) == []
-    assert store.get_change(foreign.id, owner_id=other["X-Changelorg-Owner"]) == foreign
+    assert store.get_change(foreign.id, owner_id=other["X-Riffle-Owner"]) == foreign
 
 
 def test_source_crud_ignores_frontend_owner_identity(
@@ -144,7 +144,7 @@ def test_source_crud_ignores_frontend_owner_identity(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     fetch = Mock(side_effect=AssertionError("Source CRUD must not fetch"))
     monkeypatch.setattr(RssAtomPlugin, "fetch", fetch)
     assert (
@@ -155,14 +155,14 @@ def test_source_crud_ignores_frontend_owner_identity(
         api_client.post(
             "/profiles",
             headers=headers,
-            json={"name": "dev", "owner_id": other["X-Changelorg-Owner"]},
+            json={"name": "dev", "owner_id": other["X-Riffle-Owner"]},
         ).status_code
         == 201
     )
     response = api_client.post(
         "/sources",
         headers=headers,
-        json={**source_body(), "owner_id": other["X-Changelorg-Owner"]},
+        json={**source_body(), "owner_id": other["X-Riffle-Owner"]},
     )
     assert response.status_code == 201
     source = response.json()
@@ -177,7 +177,7 @@ def test_source_crud_ignores_frontend_owner_identity(
     response = api_client.patch(
         f"/sources/{source['id']}",
         headers=headers,
-        json={"name": "Renamed", "owner_id": other["X-Changelorg-Owner"]},
+        json={"name": "Renamed", "owner_id": other["X-Riffle-Owner"]},
     )
     assert response.status_code == 200
     assert response.json()["name"] == "Renamed"
@@ -216,8 +216,8 @@ def test_foreign_source_access_is_not_found(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    foreign = seed_change(other["X-Changelorg-Owner"])
-    before = store.get_source(foreign.source_id, owner_id=other["X-Changelorg-Owner"])
+    foreign = seed_change(other["X-Riffle-Owner"])
+    before = store.get_source(foreign.source_id, owner_id=other["X-Riffle-Owner"])
     fetch = Mock(side_effect=AssertionError("Foreign sources must not fetch"))
     monkeypatch.setattr(RssAtomPlugin, "fetch", fetch)
     response = api_client.request(
@@ -225,10 +225,10 @@ def test_foreign_source_access_is_not_found(
     )
     assert response.status_code == 404
     assert (
-        store.get_source(foreign.source_id, owner_id=other["X-Changelorg-Owner"])
+        store.get_source(foreign.source_id, owner_id=other["X-Riffle-Owner"])
         == before
     )
-    assert store.get_change(foreign.id, owner_id=other["X-Changelorg-Owner"]) == foreign
+    assert store.get_change(foreign.id, owner_id=other["X-Riffle-Owner"]) == foreign
     assert (
         api_client.get(
             "/changes", headers=headers, params={"source_id": foreign.source_id}
@@ -243,7 +243,7 @@ def test_change_state_is_private_and_partial_updates_preserve_other_fields(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
     response = api_client.patch(
         f"/changes/{change.id}",
@@ -295,9 +295,9 @@ def test_restore_validates_every_owner_before_any_write(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
-    foreign = seed_change(other["X-Changelorg-Owner"])
+    foreign = seed_change(other["X-Riffle-Owner"])
     before = store.update_change(
         change.id,
         ChangeUpdate(dismissed=True, saved=True, note="Retain"),
@@ -311,7 +311,7 @@ def test_restore_validates_every_owner_before_any_write(
     )
     assert response.status_code == 404
     assert store.get_change(change.id, owner_id=owner) == before
-    assert store.get_change(foreign.id, owner_id=other["X-Changelorg-Owner"]) == foreign
+    assert store.get_change(foreign.id, owner_id=other["X-Riffle-Owner"]) == foreign
     response = api_client.post(
         "/changes/restore", headers=headers, json={"ids": [change.id]}
     )
@@ -327,7 +327,7 @@ def test_disabled_sources_exclude_feed_and_fetch_but_preserve_state(
     api_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
     before = store.update_change(
         change.id, ChangeUpdate(saved=True, note="Retain"), owner_id=owner
@@ -373,7 +373,7 @@ def test_preview_is_bounded_and_never_writes(
     api_client: TestClient, monkeypatch: pytest.MonkeyPatch, count: int
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     items = [
         ChangeInput(
             external_id=str(index), title=f"Release {index}", published_at=utc_now()
@@ -419,7 +419,7 @@ def test_invalid_and_ssrf_source_urls_fail_initial_validation(
     api_client: TestClient, monkeypatch: pytest.MonkeyPatch, url: str, path: str
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     store.create_profile("dev", owner)
     body = source_body()
     body["config"]["url"] = url
@@ -442,7 +442,7 @@ def test_preview_fetch_failure_does_not_write_or_expose_upstream_details(
     response = api_client.post("/sources/preview", headers=headers, json=source_body())
     assert response.status_code == 502
     assert "SECRET" not in response.text
-    assert store.list_profiles(headers["X-Changelorg-Owner"]) == []
+    assert store.list_profiles(headers["X-Riffle-Owner"]) == []
     assert store.list_sources(owner_id=None) == []
     assert store.list_changes(owner_id=None, include_dismissed=True) == []
 
@@ -460,7 +460,7 @@ def test_invalid_source_configs_fail_preview_create_and_update_without_writes(
     api_client: TestClient, monkeypatch: pytest.MonkeyPatch, overrides: dict
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
     before = store.get_source(change.source_id, owner_id=owner)
     fetch = Mock(side_effect=AssertionError("Invalid configs must not fetch"))
@@ -511,7 +511,7 @@ def test_catalog_search_returns_drafts_without_account_writes(
         api_client.get("/catalog", headers=headers, params={"q": "x" * 201}).status_code
         == 422
     )
-    assert store.list_profiles(headers["X-Changelorg-Owner"]) == []
+    assert store.list_profiles(headers["X-Riffle-Owner"]) == []
     assert store.list_sources(owner_id=None) == []
 
 
@@ -520,9 +520,9 @@ def test_browser_state_import_is_owner_scoped_and_preserves_server_state(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
-    foreign = seed_change(other["X-Changelorg-Owner"])
+    foreign = seed_change(other["X-Riffle-Owner"])
     body = {
         "state": {
             f"{item.source_id}:{item.external_id}": {
@@ -535,7 +535,7 @@ def test_browser_state_import_is_owner_scoped_and_preserves_server_state(
     response = api_client.post("/me/import-state", headers=headers, json=body)
     assert response.status_code == 200
     assert response.json()["created"] == 1
-    assert store.get_change(foreign.id, owner_id=other["X-Changelorg-Owner"]) == foreign
+    assert store.get_change(foreign.id, owner_id=other["X-Riffle-Owner"]) == foreign
     assert store.get_change(change.id, owner_id=owner).note == "Browser note"
     before = store.update_change(
         change.id, ChangeUpdate(saved=False, note="Server note"), owner_id=owner

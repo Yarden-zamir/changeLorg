@@ -15,8 +15,8 @@ from urllib.parse import urlsplit
 import httpcore
 import httpx
 
-from changelorg.enrichment import PROFILES
-from changelorg.models import SourceCreate
+from riffle.enrichment import PROFILES
+from riffle.models import SourceCreate
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_REDIRECTS = 3
@@ -127,7 +127,7 @@ def validate_source_config(source: SourceCreate) -> None:
     config = source.config
     validate_public_url(config.get("url"))
     if source.plugin == "x":
-        from changelorg.social import x_username
+        from riffle.social import x_username
 
         x_username(validate_public_url(config.get("url")))
     string_keys = {"url", "profile", "user_agent", "enrichment_profile"}
@@ -164,7 +164,7 @@ def validate_source_config(source: SourceCreate) -> None:
         raise PublicFetchError("Source config limit must be an integer from 1 to 100")
     if "enrichment_profile" in config and config["enrichment_profile"] not in PROFILES:
         raise PublicFetchError("Source enrichment profile is unknown")
-    _user_agent(config.get("user_agent", "changelorg/0.1"))
+    _user_agent(config.get("user_agent", "riffle/0.1"))
 
 
 def _user_agent(value: str) -> bytes:
@@ -306,7 +306,7 @@ class _PublicBackend(httpcore.NetworkBackend):
 class PublicFetcher:
     """Reuse one instance per source invocation. Every get and redirect consumes the same deadline and request budget."""
 
-    def __init__(self, *, user_agent: str = "changelorg/0.1") -> None:
+    def __init__(self, *, user_agent: str = "riffle/0.1") -> None:
         self.deadline = time.monotonic() + TOTAL_TIMEOUT
         self.requests_remaining = MAX_REQUESTS
         self._headers = [

@@ -13,16 +13,16 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from changelorg.config import credentials_path
+from riffle.config import credentials_path
 
-DEFAULT_SERVER = "https://changelorg.yarden-zamir.com"
+DEFAULT_SERVER = "https://riffle.yarden-zamir.com"
 type Scope = Literal["read", "write"]
 type Method = Literal["GET", "POST", "PATCH", "DELETE"]
-_MUTATION = {"X-Changelorg-Request": "1"}
+_MUTATION = {"X-Riffle-Request": "1"}
 _POLL_FAILURES = {
     "access_denied": "The request was denied in the browser.",
-    "expired_token": "The approval request expired. Run changelorg auth login again.",
-    "invalid_grant": "The server no longer knows this request. Run changelorg auth login again.",
+    "expired_token": "The approval request expired. Run riffle auth login again.",
+    "invalid_grant": "The server no longer knows this request. Run riffle auth login again.",
 }
 
 
@@ -60,7 +60,7 @@ class Credentials(BaseModel):
 
 
 def server_origin(value: str | None) -> str:
-    raw = (value or os.environ.get("CHANGELORG_SERVER") or DEFAULT_SERVER).strip().rstrip("/")
+    raw = (value or os.environ.get("RIFFLE_SERVER") or DEFAULT_SERVER).strip().rstrip("/")
     parts = urlsplit(raw)
     if parts.scheme != "https" and not (parts.scheme == "http" and parts.hostname in {"localhost", "127.0.0.1"}):
         raise RemoteError("The server must use https, or http on localhost.")
@@ -70,7 +70,7 @@ def server_origin(value: str | None) -> str:
 
 
 def client(origin: str) -> httpx.Client:
-    return httpx.Client(base_url=origin, timeout=30, follow_redirects=False, headers={"User-Agent": "changelorg-cli"})
+    return httpx.Client(base_url=origin, timeout=30, follow_redirects=False, headers={"User-Agent": "riffle-cli"})
 
 
 def load_credentials(path: Path | None = None) -> Credentials:
@@ -82,7 +82,7 @@ def load_credentials(path: Path | None = None) -> Credentials:
     try:
         return Credentials.model_validate_json(text)
     except ValidationError:
-        raise RemoteError(f"{path} is not a valid credentials file. Delete it, then run changelorg auth login.") from None
+        raise RemoteError(f"{path} is not a valid credentials file. Delete it, then run riffle auth login.") from None
 
 
 def save_credentials(credentials: Credentials, path: Path | None = None) -> Path:
@@ -154,7 +154,7 @@ def request_json(http: httpx.Client, token: str, path: str, *, method: Method = 
         headers.update(_MUTATION)
     response = http.request(method, path, headers=headers, json=body)
     if response.status_code == 401:
-        raise RemoteError("The saved token is expired or revoked. Run changelorg auth login.")
+        raise RemoteError("The saved token is expired or revoked. Run riffle auth login.")
     if not response.is_success:
         raise _failure(response, f"{method} {path}")
     if response.status_code == 204:

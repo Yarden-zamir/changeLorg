@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from changelorg.plugins.html_news import _article_links, _published_at, _title
+from riffle.plugins.html_news import _article_links, _published_at, _title
 
 
 def test_article_links_keeps_matching_same_site_articles_once() -> None:

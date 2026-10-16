@@ -1,6 +1,6 @@
 export const apiUrl = import.meta.env?.VITE_API_URL ?? (import.meta.env?.DEV ? "http://127.0.0.1:8000" : "");
-export const anonymousTokenKey = "changelorg:anonymous-token:v1";
-export const identityInvalidatedEvent = "changelorg:identity-invalidated";
+export const anonymousTokenKey = "riffle:anonymous-token:v1";
+export const identityInvalidatedEvent = "riffle:identity-invalidated";
 let identityRequest = 0;
 let access: { owner: string; token: string; authenticated: boolean } | null = null;
 const reads = new Map<string, { expires: number; value: unknown }>();
@@ -47,7 +47,7 @@ export async function resetSession(): Promise<void> {
   try {
     // Session recovery needs no account access or browser token, even when either is invalid.
     response = await fetch(`${apiUrl}/session/reset`, {
-      method: "POST", headers: { "X-Changelorg-Request": "1" }, credentials: "include",
+      method: "POST", headers: { "X-Riffle-Request": "1" }, credentials: "include",
       cache: "no-store", redirect: "error", signal: AbortSignal.timeout(90_000),
     });
   } catch {
@@ -80,8 +80,8 @@ export async function api<T>(path: string, options: { owner: string | null; meth
   const cached = cacheable ? reads.get(cacheKey) : undefined;
   if (cached && cached.expires > Date.now() && !options.signal?.aborted) return structuredClone(cached.value) as T;
   // The server must compare this owner with the request identity before it accesses account data.
-  if (options.owner) headers["X-Changelorg-Owner"] = options.owner;
-  if (method !== "GET") headers["X-Changelorg-Request"] = "1";
+  if (options.owner) headers["X-Riffle-Owner"] = options.owner;
+  if (method !== "GET") headers["X-Riffle-Request"] = "1";
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   const timeout = AbortSignal.timeout(90_000);
   let response: Response;

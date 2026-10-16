@@ -6,10 +6,10 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from changelorg.feeds import fetch_feed, github_release_repository
-from changelorg.models import SourceCreate
-from changelorg.network import PublicFetcher, PublicFetchError, validate_public_url
-from changelorg.social import X_HOSTS, social_url, x_username
+from riffle.feeds import fetch_feed, github_release_repository
+from riffle.models import SourceCreate
+from riffle.network import PublicFetcher, PublicFetchError, validate_public_url
+from riffle.social import X_HOSTS, social_url, x_username
 
 
 def normalize_discovery_url(value: str) -> httpx.URL:

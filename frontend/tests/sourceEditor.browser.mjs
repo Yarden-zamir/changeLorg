@@ -74,8 +74,8 @@ test("source editor browser contracts", { skip: !process.env.PLAYWRIGHT_MODULE, 
       const send = (value, status = 200) => route.fulfill({ status, contentType: "application/json", headers: { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*" }, body: status === 204 ? "" : JSON.stringify(value) });
       if (method === "OPTIONS") return send({}, 204);
       if (path === "/me") return send({ id: owner, authenticated: true, login: "tester", auth_enabled: true, anonymous_has_data: false });
-      assert.equal(request.headers()["x-changelorg-owner"], owner);
-      if (method !== "GET") assert.equal(request.headers()["x-changelorg-request"], "1");
+      assert.equal(request.headers()["x-riffle-owner"], owner);
+      if (method !== "GET") assert.equal(request.headers()["x-riffle-request"], "1");
       if (path === "/plugins") return send(plugins);
       if (path === "/catalog") return send([candidate]);
       if (path === "/sources/discover") return send(state.candidates);

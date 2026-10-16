@@ -4,10 +4,10 @@ import calendar
 from datetime import datetime, timezone
 from typing import Any
 
-from changelorg.enrichment import PROFILES, enrich_change, plain_text, profile_for
-from changelorg.feeds import fetch_feed
-from changelorg.models import ChangeInput, Source, TimeWindow
-from changelorg.network import (
+from riffle.enrichment import PROFILES, enrich_change, plain_text, profile_for
+from riffle.feeds import fetch_feed
+from riffle.models import ChangeInput, Source, TimeWindow
+from riffle.network import (
     MAX_ENTRIES,
     PublicFetcher,
     PublicFetchError,
@@ -15,7 +15,7 @@ from changelorg.network import (
     validate_public_url,
     validate_source_config,
 )
-from changelorg.plugin import PluginConfigError
+from riffle.plugin import PluginConfigError
 
 
 def _entry_value(entry: Any, key: str) -> Any:
@@ -105,7 +105,7 @@ class RssAtomPlugin:
         enrichment_profile_name = source.config.get("enrichment_profile")
         if enrichment_profile_name is not None and not isinstance(enrichment_profile_name, str):
             raise PluginConfigError("rss-atom config 'enrichment_profile' must be a string")
-        client = PublicFetcher(user_agent=source.config.get("user_agent", "changelorg/0.1"))
+        client = PublicFetcher(user_agent=source.config.get("user_agent", "riffle/0.1"))
         response, parsed_feed, fallback = fetch_feed(client, url)
         enrichment_profile = profile_for(
             str(response.url) if fallback else url, enrichment_profile_name

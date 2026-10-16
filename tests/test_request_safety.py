@@ -12,20 +12,20 @@ from test_api_profiles import api_client as api_client  # noqa: PLC0414
 from test_api_profiles import api_env as api_env  # noqa: PLC0414
 from test_api_profiles import owner_headers, seed_change, source_body
 
-from changelorg import api, refresh, service, store
-from changelorg.api import create_app
-from changelorg.models import ChangeInput, ChangeUpdate, Source, TimeWindow
-from changelorg.network import SOURCE_FETCH_SLOTS
-from changelorg.plugin import PluginManager
-from changelorg.plugins.rss_atom import RssAtomPlugin
-from changelorg.refresh import HourlyRefreshLoop
+from riffle import api, refresh, service, store
+from riffle.api import create_app
+from riffle.models import ChangeInput, ChangeUpdate, Source, TimeWindow
+from riffle.network import SOURCE_FETCH_SLOTS
+from riffle.plugin import PluginManager
+from riffle.plugins.rss_atom import RssAtomPlugin
+from riffle.refresh import HourlyRefreshLoop
 
 
 @pytest.mark.parametrize(
     "environment,origin",
     [
-        ("prod", "https://changelorg.yarden-zamir.com"),
-        ("pr-123", "https://pr-123.changelorg.yarden-zamir.com"),
+        ("prod", "https://riffle.yarden-zamir.com"),
+        ("pr-123", "https://pr-123.riffle.yarden-zamir.com"),
     ],
 )
 @pytest.mark.parametrize("configuration", ["unset", "blank"])
@@ -37,7 +37,7 @@ def test_deployment_origin_allows_only_matching_browser_mutations(
     configuration: str,
 ) -> None:
     monkeypatch.setenv("KITSHN_ENVIRONMENT", environment)
-    for name in ("CHANGELORG_PUBLIC_ORIGIN", "CHANGELORG_CORS_ORIGINS"):
+    for name in ("RIFFLE_PUBLIC_ORIGIN", "RIFFLE_CORS_ORIGINS"):
         if configuration == "blank":
             monkeypatch.setenv(name, "")
         else:
@@ -53,7 +53,7 @@ def test_deployment_origin_allows_only_matching_browser_mutations(
             assert response.status_code == 403
             assert response.headers["cache-control"] == "private, no-store"
             assert "access-control-allow-origin" not in response.headers
-            assert store.list_profiles(headers["X-Changelorg-Owner"]) == []
+            assert store.list_profiles(headers["X-Riffle-Owner"]) == []
 
         response = client.post(
             "/profiles", headers={**headers, "Origin": origin}, json={"name": "allowed"}
@@ -62,7 +62,7 @@ def test_deployment_origin_allows_only_matching_browser_mutations(
         assert response.headers["access-control-allow-origin"] == origin
         assert response.headers["access-control-allow-credentials"] == "true"
         assert response.headers["cache-control"] == "private, no-store"
-        assert [p.name for p in store.list_profiles(headers["X-Changelorg-Owner"])] == [
+        assert [p.name for p in store.list_profiles(headers["X-Riffle-Owner"])] == [
             "allowed"
         ]
 
@@ -72,23 +72,23 @@ def test_unknown_deployment_requires_explicit_public_origin(
     api_env: None, monkeypatch: pytest.MonkeyPatch, configuration: str
 ) -> None:
     monkeypatch.setenv("KITSHN_ENVIRONMENT", "custom-deployment")
-    monkeypatch.setenv("CHANGELORG_CORS_ORIGINS", "")
+    monkeypatch.setenv("RIFFLE_CORS_ORIGINS", "")
     if configuration == "blank":
-        monkeypatch.setenv("CHANGELORG_PUBLIC_ORIGIN", "")
+        monkeypatch.setenv("RIFFLE_PUBLIC_ORIGIN", "")
     else:
-        monkeypatch.delenv("CHANGELORG_PUBLIC_ORIGIN", raising=False)
+        monkeypatch.delenv("RIFFLE_PUBLIC_ORIGIN", raising=False)
     with pytest.raises(ValueError) as failure, TestClient(create_app()):
         pass
-    assert "CHANGELORG_PUBLIC_ORIGIN" in str(failure.value)
+    assert "RIFFLE_PUBLIC_ORIGIN" in str(failure.value)
 
 
 @pytest.mark.parametrize("auth_enabled", [False, True])
 @pytest.mark.parametrize(
     "session_names",
     [
-        ("_changelorg_oauth",),
-        ("_changelorg_oauth_0", "_changelorg_oauth_1"),
-        ("_changelorg_oauth", "_changelorg_oauth_0", "_changelorg_oauth_1"),
+        ("_riffle_oauth",),
+        ("_riffle_oauth_0", "_riffle_oauth_1"),
+        ("_riffle_oauth", "_riffle_oauth_0", "_riffle_oauth_1"),
     ],
     ids=["base", "chunks", "base-and-chunks"],
 )
@@ -98,7 +98,7 @@ def test_session_reset_clears_secure_cookies_without_auth_and_preserves_anonymou
     auth_enabled: bool,
     session_names: tuple[str, ...],
 ) -> None:
-    monkeypatch.setenv("CHANGELORG_AUTH_ENABLED", str(auth_enabled).lower())
+    monkeypatch.setenv("RIFFLE_AUTH_ENABLED", str(auth_enabled).lower())
     auth = Mock(return_value=httpx.Response(401))
     with (
         TestClient(create_app(), base_url="https://changes.example.com") as client,
@@ -107,7 +107,7 @@ def test_session_reset_clears_secure_cookies_without_auth_and_preserves_anonymou
         client.app.state.auth_client = auth_client
         token = str(uuid4())
         headers = owner_headers(client, token)
-        owner = headers["X-Changelorg-Owner"]
+        owner = headers["X-Riffle-Owner"]
         change = seed_change(owner)
         before = store.update_change(
             change.id,
@@ -118,9 +118,9 @@ def test_session_reset_clears_secure_cookies_without_auth_and_preserves_anonymou
         sources = store.list_sources(owner_id=owner)
         cookies = (
             *session_names,
-            "_changelorg_oauth_csrf",
+            "_riffle_oauth_csrf",
             "unrelated",
-            "_changelorg_oauth2",
+            "_riffle_oauth2",
         )
         client.cookies.extract_cookies(
             httpx.Response(
@@ -149,7 +149,7 @@ def test_session_reset_clears_secure_cookies_without_auth_and_preserves_anonymou
         response = client.post(
             "/session/reset",
             headers={
-                "X-Changelorg-Request": "1",
+                "X-Riffle-Request": "1",
                 "Origin": str(client.base_url).rstrip("/"),
             },
         )
@@ -157,10 +157,10 @@ def test_session_reset_clears_secure_cookies_without_auth_and_preserves_anonymou
         assert response.content == b""
         assert response.headers["cache-control"] == "private, no-store"
         assert "X-Anonymous-Token" not in response.request.headers
-        assert "X-Changelorg-Owner" not in response.request.headers
+        assert "X-Riffle-Owner" not in response.request.headers
         assert dict(client.cookies) == {
             "unrelated": "stale",
-            "_changelorg_oauth2": "stale",
+            "_riffle_oauth2": "stale",
         }
         auth.assert_not_called()
 
@@ -190,8 +190,8 @@ def test_session_reset_clears_secure_cookies_without_auth_and_preserves_anonymou
     "headers",
     [
         {},
-        {"X-Changelorg-Request": "0"},
-        {"X-Changelorg-Request": "1", "Origin": "https://unrelated.example"},
+        {"X-Riffle-Request": "0"},
+        {"X-Riffle-Request": "1", "Origin": "https://unrelated.example"},
     ],
     ids=["missing-csrf", "wrong-csrf", "foreign-origin"],
 )
@@ -199,12 +199,12 @@ def test_session_reset_rejects_unsafe_requests_without_cookie_changes(
     api_env: None, headers: dict[str, str]
 ) -> None:
     with TestClient(create_app(), base_url="https://changes.example.com") as client:
-        client.cookies.set("_changelorg_oauth", "stale")
+        client.cookies.set("_riffle_oauth", "stale")
         response = client.post("/session/reset", headers=headers)
         assert response.status_code == 403
         assert response.headers["cache-control"] == "private, no-store"
         assert "set-cookie" not in response.headers
-        assert client.cookies.get("_changelorg_oauth") == "stale"
+        assert client.cookies.get("_riffle_oauth") == "stale"
 
 
 @pytest.mark.parametrize("streamed", [False, True], ids=["content-length", "chunked"])
@@ -217,7 +217,7 @@ def test_request_body_limit_precedes_writes_and_accepts_valid_chunks(
     api_client: TestClient, streamed: bool, size: int, status: int
 ) -> None:
     headers = {**owner_headers(api_client), "Content-Type": "application/json"}
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
     profiles = store.list_profiles(owner)
     sources = store.list_sources(owner_id=owner)
@@ -265,7 +265,7 @@ def test_preview_and_scheduler_share_fetch_capacity_and_release_it(
 ) -> None:
     assert api.SOURCE_FETCH_SLOTS is refresh.SOURCE_FETCH_SLOTS is SOURCE_FETCH_SLOTS
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
     acquire_started = Event()
     fetch_started = Event()

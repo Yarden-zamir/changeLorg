@@ -226,39 +226,39 @@ body:has(dialog[open]) { overflow: hidden; }
   .editor-preview-items { max-height: 24rem; }
 }
 
-.changelorg-rendered { overflow-wrap: anywhere; }
-.changelorg-rendered img { max-width: 100%; height: auto; }
+.riffle-rendered { overflow-wrap: anywhere; }
+.riffle-rendered img { max-width: 100%; height: auto; }
 
-.changelorg-rendered p,
-.changelorg-rendered ul,
-.changelorg-rendered ol,
-.changelorg-rendered pre,
-.changelorg-rendered blockquote {
+.riffle-rendered p,
+.riffle-rendered ul,
+.riffle-rendered ol,
+.riffle-rendered pre,
+.riffle-rendered blockquote {
   margin: 0.65rem 0;
 }
 
-.changelorg-rendered > :first-child {
+.riffle-rendered > :first-child {
   margin-top: 0;
 }
 
-.changelorg-rendered > :last-child {
+.riffle-rendered > :last-child {
   margin-bottom: 0;
 }
 
-.changelorg-rendered ul,
-.changelorg-rendered ol {
+.riffle-rendered ul,
+.riffle-rendered ol {
   padding-left: 1.25rem;
 }
 
-.changelorg-rendered ul {
+.riffle-rendered ul {
   list-style: disc;
 }
 
-.changelorg-rendered ol {
+.riffle-rendered ol {
   list-style: decimal;
 }
 
-.changelorg-rendered a {
+.riffle-rendered a {
   font-weight: 600;
   text-decoration: underline;
   text-decoration-color: var(--accent);
@@ -266,18 +266,18 @@ body:has(dialog[open]) { overflow: hidden; }
   text-underline-offset: 0.18em;
 }
 
-.changelorg-rendered code {
+.riffle-rendered code {
   font-family: var(--mono);
   font-size: 0.85em;
 }
 
 /* Highlighter: a marker band behind inline code. */
-.changelorg-rendered :not(pre) > code {
+.riffle-rendered :not(pre) > code {
   background: linear-gradient(transparent 35%, var(--select) 35%, var(--select) 88%, transparent 88%);
   padding: 0 2px;
 }
 
-.changelorg-rendered pre {
+.riffle-rendered pre {
   overflow-x: auto;
   border: 2px solid var(--border);
   border-radius: 0.25rem;
@@ -287,7 +287,7 @@ body:has(dialog[open]) { overflow: hidden; }
   box-shadow: 3px 3px 0 0 var(--shadow-ink);
 }
 
-.changelorg-rendered blockquote {
+.riffle-rendered blockquote {
   border-left: 4px solid var(--accent);
   padding-left: 0.85rem;
   color: var(--muted);

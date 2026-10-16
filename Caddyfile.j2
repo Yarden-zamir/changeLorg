@@ -1,4 +1,4 @@
-{{ host("changelorg.yarden-zamir.com") }} {
+{{ host("riffle.yarden-zamir.com") }} {
     request_header -Remote-User
     request_header -X-Auth-Request-*
     request_header -X-Forwarded-*
@@ -20,3 +20,12 @@
         reverse_proxy unix//{{ paths.default_socket }}
     }
 }
+
+{% if environment == "prod" %}
+# Old links from the changelorg name: issue 1 of The Riffle, profile share links, and saved bookmarks.
+# 308 keeps the method, so API calls from an old client reach the new host.
+# Remove this block when the Caddy log shows no requests for this host.
+changelorg.yarden-zamir.com {
+    redir https://riffle.yarden-zamir.com{uri} 308
+}
+{% endif %}

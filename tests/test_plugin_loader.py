@@ -1,14 +1,14 @@
 from datetime import datetime, timezone
 
-from changelorg.models import Source, TimeWindow
-from changelorg.plugin import PluginManager, load_local_plugins
+from riffle.models import Source, TimeWindow
+from riffle.plugin import PluginManager, load_local_plugins
 
 
 def test_load_local_plugin_from_file(tmp_path) -> None:
     plugin_file = tmp_path / "example.py"
     plugin_file.write_text(
         """
-from changelorg.models import ChangeInput
+from riffle.models import ChangeInput
 
 class ExamplePlugin:
     key = "example"

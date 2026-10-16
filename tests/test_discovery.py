@@ -4,10 +4,10 @@ import httpx
 import pytest
 from test_network import Socket, Wire, response
 
-from changelorg import network
-from changelorg.discovery import discover_sources, normalize_discovery_url
-from changelorg.models import SourceCreate
-from changelorg.network import FetchBudgetExceeded, PublicFetchError
+from riffle import network
+from riffle.discovery import discover_sources, normalize_discovery_url
+from riffle.models import SourceCreate
+from riffle.network import FetchBudgetExceeded, PublicFetchError
 
 EMPTY_RSS = b"<rss version='2.0'><channel><title>Empty RSS</title></channel></rss>"
 EMPTY_ATOM = (

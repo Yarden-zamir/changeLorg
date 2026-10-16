@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
-from changelorg.models import TimeWindow, ensure_utc, utc_now
+from riffle.models import TimeWindow, ensure_utc, utc_now
 
 
 _DURATION_UNITS = {
