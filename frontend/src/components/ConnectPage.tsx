@@ -63,14 +63,14 @@ export function ConnectPage() {
 
   return <div className="min-h-screen px-1 py-2 text-ink sm:px-5 sm:py-4 lg:px-8">
     <section className="mx-auto grid max-w-2xl gap-4 py-10">
-      <h1 className="text-4xl font-extrabold">changelorg<span className="text-accent">.</span></h1>
+      <h1 className="text-4xl font-extrabold">riffle<span className="text-accent">.</span></h1>
       <h2 className="text-2xl font-extrabold">Agent access</h2>
       {!identity ? (error ? <>
         <ErrorNote message={error} />
         <a className="editor-button editor-primary w-fit" href={signIn}>Sign in with GitHub again</a>
       </> : <p role="status">Load your account...</p>)
         : !identity.authenticated ? <>
-          <p className="leading-7">An agent asks for read access to your changelorg account. Sign in with GitHub to review the request.</p>
+          <p className="leading-7">An agent asks for read access to your Riffle account. Sign in with GitHub to review the request.</p>
           {identity.auth_enabled
             ? <a className="editor-button editor-primary w-fit" href={signIn}>Sign in with GitHub</a>
             : <p className="text-muted">GitHub sign-in is not available on this server, so agents cannot get access here.</p>}
@@ -83,7 +83,7 @@ export function ConnectPage() {
           </form>
             : <>
               {request ? <div className="grid gap-3 rounded border-2 border-line bg-surface p-5 shadow-hard">
-                <p className="text-lg leading-7"><strong>{request.client_name}</strong> asks to {request.scope === "write" ? "read and change" : "read"} your changelorg account.</p>
+                <p className="text-lg leading-7"><strong>{request.client_name}</strong> asks to {request.scope === "write" ? "read and change" : "read"} your Riffle account.</p>
                 <p className="w-fit rounded border-2 border-shadow bg-select px-3 py-1 font-mono text-3xl font-semibold tracking-widest text-select-fg shadow-hard-sm">{request.user_code}</p>
                 <p className="text-sm leading-6">Compare this code with the code in your agent's output. Approve only a request that you started yourself. Another person can send you a link like this.</p>
                 <ul className="list-disc pl-5 text-sm leading-6">

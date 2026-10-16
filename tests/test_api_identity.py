@@ -8,14 +8,14 @@ from test_api_profiles import api_client as api_client  # noqa: PLC0414
 from test_api_profiles import api_env as api_env  # noqa: PLC0414
 from test_api_profiles import owner_headers, seed_change, source_body
 
-from changelorg import store
-from changelorg.api import create_app
-from changelorg.models import ChangeUpdate
+from riffle import store
+from riffle.api import create_app
+from riffle.models import ChangeUpdate
 
 
 @pytest.fixture
 def auth_client(api_env: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    monkeypatch.setenv("CHANGELORG_AUTH_ENABLED", "true")
+    monkeypatch.setenv("RIFFLE_AUTH_ENABLED", "true")
     with TestClient(create_app()) as client:
         yield client
 
@@ -25,7 +25,7 @@ def auth_client(api_env: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[Test
 def test_absent_or_forged_headers_never_authenticate_github(
     api_env: None, monkeypatch: pytest.MonkeyPatch, enabled: bool, forged: bool
 ) -> None:
-    monkeypatch.setenv("CHANGELORG_AUTH_ENABLED", str(enabled).lower())
+    monkeypatch.setenv("RIFFLE_AUTH_ENABLED", str(enabled).lower())
     requests = []
 
     def reject_network(request: httpx.Request) -> httpx.Response:
@@ -53,7 +53,7 @@ def test_absent_or_forged_headers_never_authenticate_github(
         assert response.status_code == 401
         assert (
             client.get(
-                "/me", headers={**headers, "X-Changelorg-Owner": "github:8178413"}
+                "/me", headers={**headers, "X-Riffle-Owner": "github:8178413"}
             ).status_code
             == 401
         )
@@ -68,7 +68,7 @@ def test_absent_or_forged_headers_never_authenticate_github(
         assert identity["anonymous_has_data"] is False
         assert (
             client.get(
-                "/me", headers={**headers, "X-Changelorg-Owner": "github:8178413"}
+                "/me", headers={**headers, "X-Riffle-Owner": "github:8178413"}
             ).status_code
             == 412
         )
@@ -100,13 +100,13 @@ def test_anonymous_identity_is_stable_and_not_the_raw_token(
     token = str(uuid4())
     first = owner_headers(api_client, token)
     assert (
-        owner_headers(api_client, token.upper())["X-Changelorg-Owner"]
-        == first["X-Changelorg-Owner"]
+        owner_headers(api_client, token.upper())["X-Riffle-Owner"]
+        == first["X-Riffle-Owner"]
     )
     assert (
-        owner_headers(api_client)["X-Changelorg-Owner"] != first["X-Changelorg-Owner"]
+        owner_headers(api_client)["X-Riffle-Owner"] != first["X-Riffle-Owner"]
     )
-    assert token not in first["X-Changelorg-Owner"]
+    assert token not in first["X-Riffle-Owner"]
 
 
 @pytest.mark.parametrize(
@@ -133,15 +133,15 @@ def test_missing_or_stale_owner_precondition_prevents_access_and_writes(
 ) -> None:
     headers = owner_headers(api_client)
     other = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
-    foreign = seed_change(other["X-Changelorg-Owner"])
+    foreign = seed_change(other["X-Riffle-Owner"])
     sources = store.list_sources(owner_id=None)
     profiles = store.list_profiles(owner)
     if stale:
-        headers["X-Changelorg-Owner"] = other["X-Changelorg-Owner"]
+        headers["X-Riffle-Owner"] = other["X-Riffle-Owner"]
     else:
-        del headers["X-Changelorg-Owner"]
+        del headers["X-Riffle-Owner"]
     if path == "/changes/restore":
         body = {"ids": [change.id]}
     elif path == "/me/import-state":
@@ -157,7 +157,7 @@ def test_missing_or_stale_owner_precondition_prevents_access_and_writes(
     assert store.list_sources(owner_id=None) == sources
     assert store.list_profiles(owner) == profiles
     assert store.get_change(change.id, owner_id=owner) == change
-    assert store.get_change(foreign.id, owner_id=other["X-Changelorg-Owner"]) == foreign
+    assert store.get_change(foreign.id, owner_id=other["X-Riffle-Owner"]) == foreign
 
 
 @pytest.mark.parametrize(
@@ -175,13 +175,13 @@ def test_csrf_rejection_prevents_mutations(
     api_client: TestClient, method: str, path: str, body: dict | None, failure: str
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     change = seed_change(owner)
     before = store.list_sources(owner_id=owner)
     if failure == "missing-header":
-        del headers["X-Changelorg-Request"]
+        del headers["X-Riffle-Request"]
     elif failure == "wrong-header":
-        headers["X-Changelorg-Request"] = "true"
+        headers["X-Riffle-Request"] = "true"
     else:
         headers["Origin"] = (
             "null" if failure == "null-origin" else "https://evil.example"
@@ -202,8 +202,8 @@ def test_explicit_origins_allow_credentials_and_custom_headers(
 ) -> None:
     names = {
         "x-anonymous-token",
-        "x-changelorg-owner",
-        "x-changelorg-request",
+        "x-riffle-owner",
+        "x-riffle-request",
         "content-type",
     }
     response = api_client.options(
@@ -265,16 +265,16 @@ def test_rejected_mutations_disable_private_response_caching(
     headers = owner_headers(api_client)
     body = {"name": "Rejected"}
     if status == 403:
-        del headers["X-Changelorg-Request"]
+        del headers["X-Riffle-Request"]
     else:
         body["name"] = "x" * (2 * 1024 * 1024)
     response = api_client.post("/profiles", headers=headers, json=body)
     assert response.status_code == status
-    assert store.list_profiles(headers["X-Changelorg-Owner"]) == []
+    assert store.list_profiles(headers["X-Riffle-Owner"]) == []
     assert response.headers.get("cache-control") == "private, no-store"
 
 
-@pytest.mark.parametrize("cookie", ["_changelorg_oauth", "_changelorg_oauth_0"])
+@pytest.mark.parametrize("cookie", ["_riffle_oauth", "_riffle_oauth_0"])
 def test_custom_session_cookie_requires_enabled_auth(
     api_client: TestClient, cookie: str
 ) -> None:
@@ -292,10 +292,10 @@ def test_custom_session_cookie_requires_enabled_auth(
         ).status_code
         == 401
     )
-    assert store.list_profiles(headers["X-Changelorg-Owner"]) == []
+    assert store.list_profiles(headers["X-Riffle-Owner"]) == []
 
 
-@pytest.mark.parametrize("cookie", ["_changelorg_oauth", "_changelorg_oauth_0"])
+@pytest.mark.parametrize("cookie", ["_riffle_oauth", "_riffle_oauth_0"])
 def test_proxy_token_and_github_numeric_id_define_stable_identity(
     auth_client: TestClient, cookie: str
 ) -> None:
@@ -347,7 +347,7 @@ def test_proxy_token_and_github_numeric_id_define_stable_identity(
             ).status_code
             == 412
         )
-        current = {**anonymous, "X-Changelorg-Owner": identity["id"]}
+        current = {**anonymous, "X-Riffle-Owner": identity["id"]}
         assert (
             auth_client.post(
                 "/profiles",
@@ -360,7 +360,7 @@ def test_proxy_token_and_github_numeric_id_define_stable_identity(
             "Account profile"
         ]
         assert store.list_profiles("github:99999") == []
-        assert store.list_profiles(anonymous["X-Changelorg-Owner"]) == []
+        assert store.list_profiles(anonymous["X-Riffle-Owner"]) == []
         auth_client.cookies.clear()
         assert (
             auth_client.post(
@@ -370,9 +370,9 @@ def test_proxy_token_and_github_numeric_id_define_stable_identity(
         )
         assert (
             owner_headers(auth_client, anonymous["X-Anonymous-Token"])[
-                "X-Changelorg-Owner"
+                "X-Riffle-Owner"
             ]
-            == anonymous["X-Changelorg-Owner"]
+            == anonymous["X-Riffle-Owner"]
         )
     assert requests.count("http://oauth2-proxy:4180/auth/auth") == 4
     assert requests.count("https://api.github.com/user") == 2
@@ -425,7 +425,7 @@ def test_auth_failures_fail_closed_without_anonymous_fallback(
             401 if failure == "github-unauthorized" else 500, text="SECRET error"
         )
 
-    auth_client.cookies.set("_changelorg_oauth", "invalid-session")
+    auth_client.cookies.set("_riffle_oauth", "invalid-session")
     with httpx.Client(transport=httpx.MockTransport(upstream)) as mocked:
         auth_client.app.state.auth_client = mocked
         for method, path, body in [
@@ -436,7 +436,7 @@ def test_auth_failures_fail_closed_without_anonymous_fallback(
             assert response.status_code == status
             assert "SECRET" not in response.text
             assert response.headers["cache-control"] == "private, no-store"
-        assert store.list_profiles(anonymous["X-Changelorg-Owner"]) == []
+        assert store.list_profiles(anonymous["X-Riffle-Owner"]) == []
     if failure.startswith("proxy-"):
         assert all(url == "http://oauth2-proxy:4180/auth/auth" for url in requests)
 
@@ -467,7 +467,7 @@ def test_github_identity_payload_requires_positive_integer_id(
         assert str(request.url) == "https://api.github.com/user"
         return httpx.Response(200, json=user)
 
-    auth_client.cookies.set("_changelorg_oauth", "session")
+    auth_client.cookies.set("_riffle_oauth", "session")
     with httpx.Client(transport=httpx.MockTransport(upstream)) as mocked:
         auth_client.app.state.auth_client = mocked
         assert (
@@ -482,7 +482,7 @@ def test_github_identity_payload_requires_positive_integer_id(
             ).status_code
             == 503
         )
-        assert store.list_profiles(anonymous["X-Changelorg-Owner"]) == []
+        assert store.list_profiles(anonymous["X-Riffle-Owner"]) == []
 
 
 def test_anonymous_import_requires_github_and_preserves_both_owners(
@@ -490,14 +490,14 @@ def test_anonymous_import_requires_github_and_preserves_both_owners(
 ) -> None:
     anonymous = owner_headers(auth_client)
     other = owner_headers(auth_client)
-    owner = anonymous["X-Changelorg-Owner"]
+    owner = anonymous["X-Riffle-Owner"]
     change = seed_change(owner)
     before = store.update_change(
         change.id,
         ChangeUpdate(dismissed=True, saved=True, note="Anonymous note"),
         owner_id=owner,
     )
-    foreign = seed_change(other["X-Changelorg-Owner"], "foreign")
+    foreign = seed_change(other["X-Riffle-Owner"], "foreign")
     assert (
         auth_client.post(
             "/me/import", headers=anonymous, json={"owner_id": "github:12345"}
@@ -512,19 +512,19 @@ def test_anonymous_import_requires_github_and_preserves_both_owners(
         assert str(request.url) == "https://api.github.com/user"
         return httpx.Response(200, json={"id": 12345, "login": "account"})
 
-    auth_client.cookies.set("_changelorg_oauth", "session")
+    auth_client.cookies.set("_riffle_oauth", "session")
     with httpx.Client(transport=httpx.MockTransport(upstream)) as mocked:
         auth_client.app.state.auth_client = mocked
         current = owner_headers(auth_client, anonymous["X-Anonymous-Token"])
         response = auth_client.get("/me", headers=current)
         assert response.json()["anonymous_has_data"] is True
-        assert store.list_sources(owner_id=current["X-Changelorg-Owner"]) == []
+        assert store.list_sources(owner_id=current["X-Riffle-Owner"]) == []
         assert (
             auth_client.post(
                 "/me/import",
                 headers={
-                    "X-Changelorg-Owner": current["X-Changelorg-Owner"],
-                    "X-Changelorg-Request": "1",
+                    "X-Riffle-Owner": current["X-Riffle-Owner"],
+                    "X-Riffle-Request": "1",
                 },
             ).status_code
             == 403
@@ -533,14 +533,14 @@ def test_anonymous_import_requires_github_and_preserves_both_owners(
             "/me/import",
             headers=current,
             json={
-                "anonymous_owner": other["X-Changelorg-Owner"],
+                "anonymous_owner": other["X-Riffle-Owner"],
                 "owner_id": "github:99999",
             },
         )
         assert response.status_code == 200
         assert response.json() == {"profiles": 1, "sources": 1, "changes": 1}
         imported = store.list_changes(
-            owner_id=current["X-Changelorg-Owner"], include_dismissed=True
+            owner_id=current["X-Riffle-Owner"], include_dismissed=True
         )
         assert len(imported) == 1
         assert imported[0].source_id != change.source_id
@@ -551,25 +551,25 @@ def test_anonymous_import_requires_github_and_preserves_both_owners(
         account_state = store.update_change(
             imported[0].id,
             ChangeUpdate(note="Account note"),
-            owner_id=current["X-Changelorg-Owner"],
+            owner_id=current["X-Riffle-Owner"],
         )
         response = auth_client.post("/me/import", headers=current)
         assert response.status_code == 200
         assert response.json() == {"profiles": 0, "sources": 0, "changes": 0}
         assert (
-            store.get_change(imported[0].id, owner_id=current["X-Changelorg-Owner"])
+            store.get_change(imported[0].id, owner_id=current["X-Riffle-Owner"])
             == account_state
         )
         assert store.get_change(change.id, owner_id=owner) == before
         assert (
-            store.get_change(foreign.id, owner_id=other["X-Changelorg-Owner"])
+            store.get_change(foreign.id, owner_id=other["X-Riffle-Owner"])
             == foreign
         )
         assert store.list_profiles("github:99999") == []
         auth_client.cookies.clear()
         assert (
             owner_headers(auth_client, anonymous["X-Anonymous-Token"])[
-                "X-Changelorg-Owner"
+                "X-Riffle-Owner"
             ]
             == owner
         )

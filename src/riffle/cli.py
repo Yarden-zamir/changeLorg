@@ -12,9 +12,9 @@ import uvicorn
 from rich.console import Console
 from rich.table import Table
 
-from changelorg import remote
-from changelorg.config import plugin_dirs
-from changelorg.models import (
+from riffle import remote
+from riffle.config import plugin_dirs
+from riffle.models import (
     DEFAULT_OWNER_ID,
     Change,
     SourceCreate,
@@ -22,9 +22,9 @@ from changelorg.models import (
     utc_now,
     validate_owner_id,
 )
-from changelorg.plugin import default_plugin_manager
-from changelorg.service import generate_changes
-from changelorg.store import (
+from riffle.plugin import default_plugin_manager
+from riffle.service import generate_changes
+from riffle.store import (
     add_source,
     delete_source,
     init_db,
@@ -32,18 +32,18 @@ from changelorg.store import (
     list_sources,
     update_source,
 )
-from changelorg.timeutils import parse_window
+from riffle.timeutils import parse_window
 
 app = typer.Typer(help="Track changelog/news sources and generate time-windowed change feeds.")
 sources_app = typer.Typer(help="Manage subscribed sources.")
 changes_app = typer.Typer(help="Generate and list changes.")
 app.add_typer(sources_app, name="sources")
 app.add_typer(changes_app, name="changes")
-auth_app = typer.Typer(help="Give this machine read access to your account on a changelorg server.")
+auth_app = typer.Typer(help="Give this machine read access to your account on a Riffle server.")
 app.add_typer(auth_app, name="auth")
 ServerOption = Annotated[
     str | None,
-    typer.Option("--server", help=f"Server origin. Defaults to CHANGELORG_SERVER, then {remote.DEFAULT_SERVER}."),
+    typer.Option("--server", help=f"Server origin. Defaults to RIFFLE_SERVER, then {remote.DEFAULT_SERVER}."),
 ]
 console = Console()
 
@@ -82,7 +82,7 @@ def main(
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--owner") from exc
     if db is not None:
-        os.environ["CHANGELORG_DB"] = str(db.expanduser())
+        os.environ["RIFFLE_DB"] = str(db.expanduser())
 
 
 @app.command("init")
@@ -116,7 +116,7 @@ def serve(
     reload: Annotated[bool, typer.Option(help="Enable development reload.")] = False,
 ) -> None:
     init_db()
-    uvicorn.run("changelorg.api:app", host=host, port=port, reload=reload)
+    uvicorn.run("riffle.api:app", host=host, port=port, reload=reload)
 
 
 @sources_app.command("add")
@@ -257,7 +257,7 @@ def auth_login(
     write: Annotated[bool, typer.Option("--write", help="Ask for read and write access instead of read only.")] = False,
 ) -> None:
     """Ask for approval in the browser, then save the token."""
-    client_name = (name or f"changelorg CLI on {socket.gethostname()}")[:100]
+    client_name = (name or f"Riffle CLI on {socket.gethostname()}")[:100]
     scope: remote.Scope = "write" if write else "read"
     try:
         origin = remote.server_origin(server)
@@ -291,7 +291,7 @@ def auth_status(server: ServerOption = None) -> None:
         origin = remote.server_origin(server)
         saved = remote.load_credentials().servers.get(origin)
         if saved is None:
-            _remote_failure(f"Not signed in to {origin}. Run changelorg auth login.")
+            _remote_failure(f"Not signed in to {origin}. Run riffle auth login.")
         with remote.client(origin) as http:
             identity = remote.request_json(http, saved.token, "/me")
     except remote.RemoteError as exc:
@@ -299,7 +299,7 @@ def auth_status(server: ServerOption = None) -> None:
     except httpx.HTTPError:
         _remote_failure("Cannot reach the server. Check the connection and the --server value.")
     if not isinstance(identity, dict) or identity.get("id") != saved.owner_id:
-        _remote_failure("The server returned a different account for the saved token. Run changelorg auth login.")
+        _remote_failure("The server returned a different account for the saved token. Run riffle auth login.")
     typer.echo(f"Signed in to {origin} as {saved.login} ({saved.owner_id}) with {_access(saved.scope)} access.")
 
 
@@ -343,7 +343,7 @@ def api_get(
         origin = remote.server_origin(server)
         saved = remote.load_credentials().servers.get(origin)
         if saved is None:
-            _remote_failure(f"Not signed in to {origin}. Run changelorg auth login.")
+            _remote_failure(f"Not signed in to {origin}. Run riffle auth login.")
         with remote.client(origin) as http:
             value = remote.request_json(http, saved.token, path, method=verb, body=body)
     except remote.RemoteError as exc:

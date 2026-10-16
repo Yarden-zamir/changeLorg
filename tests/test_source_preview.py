@@ -3,16 +3,16 @@ from datetime import UTC, datetime
 import pytest
 from test_network import Wire, response
 
-from changelorg import network
-from changelorg.enrichment import PROFILES
-from changelorg.models import ChangeInput, Source, SourceCreate, TimeWindow
-from changelorg.network import (
+from riffle import network
+from riffle.enrichment import PROFILES
+from riffle.models import ChangeInput, Source, SourceCreate, TimeWindow
+from riffle.network import (
     FetchBudgetExceeded,
     PublicFetchError,
     validate_source_config,
 )
-from changelorg.plugins.html_news import HtmlNewsPlugin
-from changelorg.plugins.rss_atom import RssAtomPlugin
+from riffle.plugins.html_news import HtmlNewsPlugin
+from riffle.plugins.rss_atom import RssAtomPlugin
 
 
 @pytest.fixture

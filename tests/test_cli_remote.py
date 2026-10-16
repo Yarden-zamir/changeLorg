@@ -12,8 +12,8 @@ from test_agent_access import clock as clock  # noqa: PLC0414
 from test_api_profiles import api_env as api_env  # noqa: PLC0414
 from typer.testing import CliRunner
 
-from changelorg import remote
-from changelorg.cli import app
+from riffle import remote
+from riffle.cli import app
 
 SERVER = "https://changes.example.com"
 
@@ -28,7 +28,7 @@ SERVER = "https://changes.example.com"
     ],
 )
 def test_server_origin_accepts_origins(value: str | None, origin: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CHANGELORG_SERVER", raising=False)
+    monkeypatch.delenv("RIFFLE_SERVER", raising=False)
     assert remote.server_origin(value) == origin
 
 
@@ -59,7 +59,7 @@ def test_credentials_file_is_private(tmp_path: Path) -> None:
 def cli(
     browser: TestClient, agent: TestClient, clock: Clock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> dict:
-    monkeypatch.setenv("CHANGELORG_CREDENTIALS", str(tmp_path / "credentials.json"))
+    monkeypatch.setenv("RIFFLE_CREDENTIALS", str(tmp_path / "credentials.json"))
 
     def client(origin: str):
         assert origin == SERVER

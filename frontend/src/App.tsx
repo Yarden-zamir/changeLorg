@@ -319,7 +319,7 @@ export default function App() {
         window.scrollTo({ top: 0 });
       }} /> : null}
     </> : <section className="mx-auto max-w-3xl py-10">
-      <h1 className="mb-5 text-4xl font-extrabold">changelorg<span className="text-accent">.</span></h1>
+      <h1 className="mb-5 text-4xl font-extrabold">riffle<span className="text-accent">.</span></h1>
       {error ? <>
         <ErrorNote message={error} />
         <p className="mt-4 text-sm leading-6">Continue anonymously to clear an expired sign-in session. This works even when GitHub sign-in is unavailable. Your anonymous identifier and data stay intact.</p>

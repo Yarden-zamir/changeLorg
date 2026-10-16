@@ -11,16 +11,17 @@ services:
       KITSHN_LOG_DIR: ${KITSHN_LOG_DIR}
       KITSHN_SOCKET_DIR: ${KITSHN_SOCKET_DIR}
       KITSHN_DEFAULT_SOCKET: ${KITSHN_DEFAULT_SOCKET}
-      CHANGELORG_DATA_DIR: /data
-      CHANGELORG_DB: /data/changelorg.duckdb
-      CHANGELORG_AUTH_ENABLED: ${CHANGELORG_AUTH_ENABLED:-false}
-      CHANGELORG_OAUTH2_PROXY_URL: http://oauth2-proxy:4180
-      CHANGELORG_PUBLIC_ORIGIN: ${CHANGELORG_PUBLIC_ORIGIN:-}
-      CHANGELORG_CORS_ORIGINS: ${CHANGELORG_CORS_ORIGINS:-}
-      CHANGELORG_AUTO_REFRESH: "true"
-      CHANGELORG_REFRESH_INTERVAL_SECONDS: "3600"
-      CHANGELORG_REFRESH_WINDOW: "30d"
-      CHANGELORG_SEED_DEFAULT_SOURCES: "true"
+      RIFFLE_DATA_DIR: /data
+      RIFFLE_DB: /data/riffle.duckdb
+      RIFFLE_AUTH_ENABLED: ${RIFFLE_AUTH_ENABLED:-false}
+      RIFFLE_OAUTH2_PROXY_URL: http://oauth2-proxy:4180
+      RIFFLE_PUBLIC_ORIGIN: ${RIFFLE_PUBLIC_ORIGIN:-}
+      # The news site reads and changes the state of signed-in readers from the browser.
+      RIFFLE_CORS_ORIGINS: ${RIFFLE_CORS_ORIGINS:-https://news.yarden-zamir.com,https://the-riffle.yarden-zamir.com}
+      RIFFLE_AUTO_REFRESH: "true"
+      RIFFLE_REFRESH_INTERVAL_SECONDS: "3600"
+      RIFFLE_REFRESH_WINDOW: "30d"
+      RIFFLE_SEED_DEFAULT_SOURCES: "true"
     volumes:
       - ${KITSHN_DATA_DIR}/data:/data
     expose:
@@ -38,13 +39,16 @@ services:
       - --http-address=0.0.0.0:4180
       - --provider=github
       - --proxy-prefix=/auth
-      - --redirect-url=${CHANGELORG_PUBLIC_ORIGIN:-https://changelorg.yarden-zamir.com}/auth/callback
+      - --redirect-url=${RIFFLE_PUBLIC_ORIGIN:-https://riffle.yarden-zamir.com}/auth/callback
+      # Sign-in and sign-out may return to the news site, which links to /auth/start?rd=<its page>.
+      - --whitelist-domain=news.yarden-zamir.com
+      - --whitelist-domain=the-riffle.yarden-zamir.com
       - --reverse-proxy=true
       - --email-domain=*
       - --set-xauthrequest=true
       - --pass-access-token=true
       - --skip-provider-button=true
-      - --cookie-name=_changelorg_oauth
+      - --cookie-name=_riffle_oauth
       - --cookie-secure=true
       - --cookie-httponly=true
       - --cookie-samesite=lax

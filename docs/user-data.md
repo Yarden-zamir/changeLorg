@@ -22,7 +22,7 @@ It does not certify implementation, tests, migration execution, or deployment.
 - Create explicit profiles from old source `config.profile` values. Missing, non-string, null, or blank legacy values retain the `dev` default.
 - Assign all migrated data to `github:8178413`.
 - GitHub's user API confirms that `Yarden-zamir` has numeric ID `8178413`. The numeric ID, not the login, controls ownership.
-- Default startup migration reads `changelorg.db` when `changelorg.duckdb` does not exist.
+- Default startup migration reads `riffle.db` when `riffle.duckdb` does not exist.
 - An explicit database path that contains SQLite also triggers migration.
 - Stop all old database owner processes before migration.
 - Commit and checkpoint the complete DuckDB migration before replacement of the database or removal of SQLite.
@@ -147,7 +147,7 @@ Agents and scripts read account data with an agent token. The device flow of RFC
 15. Agents send `Authorization: Bearer clg_...`. The server checks this token before cookies. Other `Authorization` values grant nothing and leave the browser rules unchanged.
 16. A request with an agent token and also a session cookie or `X-Anonymous-Token` returns `400`.
 17. An unknown, revoked, or expired agent token returns `401`. The server never falls back to another identity.
-18. Token requests need no `X-Changelorg-Owner` header. A present header must match the token owner, else the server returns `412`.
+18. Token requests need no `X-Riffle-Owner` header. A present header must match the token owner, else the server returns `412`.
 19. A token expires 90 days after its last use. The server records use at most once per hour, so the last use time has a precision of one hour.
 20. `GET /agent/tokens` lists the signed-in owner's tokens with ID, name, scope, creation, last use, and expiry. It never returns raw tokens or hashes.
 21. `DELETE /agent/tokens/{id}` revokes a token of the signed-in owner. Another owner's token ID returns `404`.
@@ -177,10 +177,10 @@ An owner shares the sources of a profile through a link. Another person imports 
 ## Request Safety
 
 - `GET /me` resolves identity before account access and needs no owner header.
-- Later frontend requests include `X-Changelorg-Owner` with the exact owner ID from `/me`. Agent token requests follow [Agent Access](#agent-access) 18.
+- Later frontend requests include `X-Riffle-Owner` with the exact owner ID from `/me`. Agent token requests follow [Agent Access](#agent-access) 18.
 - The server checks that header against the current request identity before account access.
 - An owner mismatch returns `412` before any mutation. The owner header is a consistency check, not authentication.
-- Every `POST`, `PATCH`, and `DELETE` requires `X-Changelorg-Request: 1` for cross-site request forgery protection.
+- Every `POST`, `PATCH`, and `DELETE` requires `X-Riffle-Request: 1` for cross-site request forgery protection.
 - Browser mutation origins must match an explicit allowlist. CORS allows credentials and the three contract headers, never wildcard origins.
 - KitSHn deployments derive their public origin from `prod` or `pr-<number>`, unless an explicit public origin overrides it.
 - Unknown deployment names require an explicit public origin. Deployment defaults exclude localhost origins.

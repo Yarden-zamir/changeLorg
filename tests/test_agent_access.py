@@ -10,11 +10,11 @@ from fastapi.testclient import TestClient
 from test_api_profiles import api_env as api_env  # noqa: PLC0414
 from test_api_profiles import owner_headers, seed_change
 
-from changelorg import agent_access, auth, store
-from changelorg.api import create_app
-from changelorg.models import USER_CODE_ALPHABET
+from riffle import agent_access, auth, store
+from riffle.api import create_app
+from riffle.models import USER_CODE_ALPHABET
 
-MUTATION = {"X-Changelorg-Request": "1"}
+MUTATION = {"X-Riffle-Request": "1"}
 
 
 class Clock:
@@ -38,7 +38,7 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
 
 @pytest.fixture
 def browser(api_env: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    monkeypatch.setenv("CHANGELORG_AUTH_ENABLED", "true")
+    monkeypatch.setenv("RIFFLE_AUTH_ENABLED", "true")
     with TestClient(create_app()) as client:
         yield client
 
@@ -57,11 +57,11 @@ def github_session(client: TestClient, user_id: int = 12345, login: str = "octo"
         assert str(request.url) == "https://api.github.com/user"
         return httpx.Response(200, json={"id": user_id, "login": login})
 
-    client.cookies.set("_changelorg_oauth", f"session-{user_id}")
+    client.cookies.set("_riffle_oauth", f"session-{user_id}")
     with httpx.Client(transport=httpx.MockTransport(upstream)) as mocked:
         client.app.state.auth_client = mocked
         try:
-            yield {"X-Changelorg-Owner": f"github:{user_id}", **MUTATION}
+            yield {"X-Riffle-Owner": f"github:{user_id}", **MUTATION}
         finally:
             client.cookies.clear()
 
@@ -135,7 +135,7 @@ def test_device_flow_grants_a_read_only_token(browser: TestClient, agent: TestCl
     write = agent.post("/profiles", json={"name": "Injected"}, headers={**bearer(token), **MUTATION})
     assert write.status_code == 403
     assert [profile.name for profile in store.list_profiles("github:12345")] == ["games"]
-    mismatch = agent.get("/profiles", headers={**bearer(token), "X-Changelorg-Owner": "github:1"})
+    mismatch = agent.get("/profiles", headers={**bearer(token), "X-Riffle-Owner": "github:1"})
     assert mismatch.status_code == 412
 
 
@@ -223,7 +223,7 @@ def test_agent_tokens_never_mix_with_browser_identities(browser: TestClient, age
     anonymous = owner_headers(browser)
     mixed = agent.get("/me", headers={**bearer(token), "X-Anonymous-Token": anonymous["X-Anonymous-Token"]})
     assert mixed.status_code == 400
-    agent.cookies.set("_changelorg_oauth", "session")
+    agent.cookies.set("_riffle_oauth", "session")
     assert agent.get("/me", headers=bearer(token)).status_code == 400
     agent.cookies.clear()
     for value in ["clg_unknown", "clg_ünicode", "clg_" + "A" * 43]:

@@ -8,14 +8,14 @@ from html.parser import HTMLParser
 
 import httpx
 
-from changelorg.models import ChangeInput, Source, TimeWindow
-from changelorg.network import (
+from riffle.models import ChangeInput, Source, TimeWindow
+from riffle.network import (
     MAX_ENTRIES,
     PublicFetcher,
     PublicFetchError,
     validate_source_config,
 )
-from changelorg.social import x_username
+from riffle.social import x_username
 
 
 class XUnavailable(PublicFetchError):

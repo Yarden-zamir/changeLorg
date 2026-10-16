@@ -64,7 +64,7 @@ export function SharePage({ token }: { token: string }) {
 
   return <div className="min-h-screen px-1 py-2 text-ink sm:px-5 sm:py-4 lg:px-8">
     <section className="mx-auto grid max-w-2xl gap-4 py-10">
-      <h1 className="text-4xl font-extrabold">changelorg<span className="text-accent">.</span></h1>
+      <h1 className="text-4xl font-extrabold">riffle<span className="text-accent">.</span></h1>
       <h2 className="text-2xl font-extrabold">Shared profile</h2>
       {!shared ? (error ? <ErrorNote message={error} /> : <p role="status">Load the shared profile...</p>) : <>
         <div className="grid gap-3 rounded border-2 border-line bg-surface p-5 shadow-hard">

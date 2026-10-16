@@ -6,20 +6,20 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from changelorg import store
-from changelorg.api import create_app
-from changelorg.models import ChangeInput, ChangeUpdate, SourceCreate, SourceUpdate, utc_now
+from riffle import store
+from riffle.api import create_app
+from riffle.models import ChangeInput, ChangeUpdate, SourceCreate, SourceUpdate, utc_now
 
 
 @pytest.fixture
 def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    monkeypatch.setenv("CHANGELORG_DB", str(tmp_path / "changelorg.duckdb"))
-    monkeypatch.setenv("CHANGELORG_AUTO_REFRESH", "false")
-    monkeypatch.setenv("CHANGELORG_SEED_DEFAULT_SOURCES", "false")
-    monkeypatch.setenv("CHANGELORG_AUTH_ENABLED", "false")
-    monkeypatch.setenv("CHANGELORG_MANUAL_GENERATE_API", "false")
-    monkeypatch.setenv("CHANGELORG_CORS_ORIGINS", "http://localhost:5173")
-    monkeypatch.setenv("CHANGELORG_PUBLIC_ORIGIN", "https://changes.example.com")
+    monkeypatch.setenv("RIFFLE_DB", str(tmp_path / "riffle.duckdb"))
+    monkeypatch.setenv("RIFFLE_AUTO_REFRESH", "false")
+    monkeypatch.setenv("RIFFLE_SEED_DEFAULT_SOURCES", "false")
+    monkeypatch.setenv("RIFFLE_AUTH_ENABLED", "false")
+    monkeypatch.setenv("RIFFLE_MANUAL_GENERATE_API", "false")
+    monkeypatch.setenv("RIFFLE_CORS_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("RIFFLE_PUBLIC_ORIGIN", "https://changes.example.com")
     with TestClient(create_app()) as client:
         yield client
 
@@ -28,7 +28,7 @@ def owner_headers(client: TestClient) -> dict[str, str]:
     headers = {"X-Anonymous-Token": str(uuid4())}
     response = client.get("/me", headers=headers)
     assert response.status_code == 200, response.text
-    return {**headers, "X-Changelorg-Owner": response.json()["id"], "X-Changelorg-Request": "1"}
+    return {**headers, "X-Riffle-Owner": response.json()["id"], "X-Riffle-Request": "1"}
 
 
 def add_feed(owner: str, name: str, url: str, profile: str = "dev", **extra: object) -> int:
@@ -47,7 +47,7 @@ def share(client: TestClient, headers: dict[str, str], profile: str = "dev") -> 
 
 def test_share_link_follows_the_profile_until_it_stops(api_client: TestClient) -> None:
     headers = owner_headers(api_client)
-    add_feed(headers["X-Changelorg-Owner"], "Releases", "https://example.com/releases.xml")
+    add_feed(headers["X-Riffle-Owner"], "Releases", "https://example.com/releases.xml")
 
     token = share(api_client, headers)
     assert share(api_client, headers) == token, "a profile has one share link"
@@ -64,7 +64,7 @@ def test_share_link_follows_the_profile_until_it_stops(api_client: TestClient) -
 
 def test_profile_deletion_ends_its_share(api_client: TestClient) -> None:
     headers = owner_headers(api_client)
-    add_feed(headers["X-Changelorg-Owner"], "Releases", "https://example.com/releases.xml")
+    add_feed(headers["X-Riffle-Owner"], "Releases", "https://example.com/releases.xml")
     token = share(api_client, headers)
     assert api_client.delete("/profiles/dev", headers=headers).status_code == 204
     assert api_client.get(f"/shares/{token}").status_code == 404
@@ -72,7 +72,7 @@ def test_profile_deletion_ends_its_share(api_client: TestClient) -> None:
 
 def test_shared_profile_is_public_and_shows_only_enabled_sources_and_declared_settings(api_client: TestClient) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     add_feed(owner, "Releases", "https://example.com/releases.xml", include_any=["cli"], private_note="kept home")
     hidden = add_feed(owner, "Paused", "https://example.com/paused.xml")
     store.update_source(hidden, SourceUpdate(enabled=False), owner_id=owner)
@@ -95,17 +95,17 @@ def test_shared_profile_is_public_and_shows_only_enabled_sources_and_declared_se
 def test_import_copies_sources_and_recent_changes_without_the_sharers_state(api_client: TestClient) -> None:
     sharer = owner_headers(api_client)
     reader = owner_headers(api_client)
-    source_id = add_feed(sharer["X-Changelorg-Owner"], "Releases", "https://example.com/releases.xml")
+    source_id = add_feed(sharer["X-Riffle-Owner"], "Releases", "https://example.com/releases.xml")
     store.upsert_changes(
         source_id,
         [
             ChangeInput(external_id="new", title="New release", published_at=utc_now() - timedelta(days=2)),
             ChangeInput(external_id="old", title="Old release", published_at=utc_now() - timedelta(days=40)),
         ],
-        owner_id=sharer["X-Changelorg-Owner"],
+        owner_id=sharer["X-Riffle-Owner"],
     )
-    recent = next(change for change in store.list_changes(source_ids=[source_id], owner_id=sharer["X-Changelorg-Owner"]) if change.external_id == "new")
-    store.update_change(recent.id, ChangeUpdate(saved=True, dismissed=True, note="mine"), owner_id=sharer["X-Changelorg-Owner"])
+    recent = next(change for change in store.list_changes(source_ids=[source_id], owner_id=sharer["X-Riffle-Owner"]) if change.external_id == "new")
+    store.update_change(recent.id, ChangeUpdate(saved=True, dismissed=True, note="mine"), owner_id=sharer["X-Riffle-Owner"])
     token = share(api_client, sharer)
 
     imported = api_client.post(f"/shares/{token}/import", headers=reader, json={"name": "from a friend"})
@@ -127,10 +127,10 @@ def test_import_copies_sources_and_recent_changes_without_the_sharers_state(api_
 def test_import_needs_an_identity_and_a_known_share(api_client: TestClient) -> None:
     sharer = owner_headers(api_client)
     reader = owner_headers(api_client)
-    add_feed(sharer["X-Changelorg-Owner"], "Releases", "https://example.com/releases.xml")
+    add_feed(sharer["X-Riffle-Owner"], "Releases", "https://example.com/releases.xml")
     token = share(api_client, sharer)
 
-    no_identity = api_client.post(f"/shares/{token}/import", headers={"X-Changelorg-Request": "1"}, json={"name": "dev"})
+    no_identity = api_client.post(f"/shares/{token}/import", headers={"X-Riffle-Request": "1"}, json={"name": "dev"})
     assert no_identity.status_code == 401
     unknown = api_client.post("/shares/unknown-token/import", headers=reader, json={"name": "dev"})
     assert unknown.status_code == 404
@@ -140,8 +140,8 @@ def test_import_needs_an_identity_and_a_known_share(api_client: TestClient) -> N
 def test_import_is_all_or_nothing_at_the_source_limit(api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     sharer = owner_headers(api_client)
     reader = owner_headers(api_client)
-    add_feed(sharer["X-Changelorg-Owner"], "One", "https://example.com/one.xml")
-    add_feed(sharer["X-Changelorg-Owner"], "Two", "https://example.com/two.xml")
+    add_feed(sharer["X-Riffle-Owner"], "One", "https://example.com/one.xml")
+    add_feed(sharer["X-Riffle-Owner"], "Two", "https://example.com/two.xml")
     token = share(api_client, sharer)
     monkeypatch.setattr(store, "MAX_SOURCES", 1)
 
@@ -154,7 +154,7 @@ def test_import_is_all_or_nothing_at_the_source_limit(api_client: TestClient, mo
 def test_only_the_owner_can_stop_a_share(api_client: TestClient) -> None:
     sharer = owner_headers(api_client)
     other = owner_headers(api_client)
-    add_feed(sharer["X-Changelorg-Owner"], "Releases", "https://example.com/releases.xml")
+    add_feed(sharer["X-Riffle-Owner"], "Releases", "https://example.com/releases.xml")
     token = share(api_client, sharer)
 
     assert api_client.delete(f"/shares/{token}", headers=other).status_code == 404

@@ -1,5 +1,5 @@
 [project]
-name = "changelorg"
+name = "riffle"
 version = "0.1.0"
 description = "Local-first changelog and news feed tracker with a plugin-driven CLI and API."
 readme = "README.md"
@@ -21,8 +21,8 @@ dependencies = [
 license = "MIT"
 
 [project.scripts]
-changelorg = "changelorg.cli:app"
-changelorg-api = "changelorg.api:run"
+riffle = "riffle.cli:app"
+riffle-api = "riffle.api:run"
 
 [dependency-groups]
 dev = [

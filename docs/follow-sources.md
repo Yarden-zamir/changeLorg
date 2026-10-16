@@ -35,30 +35,30 @@ Verified on 2026-07-06. Prefer the RSS/Atom-compatible URLs first because they w
 ## Suggested CLI Adds
 
 ```sh
-uv run changelorg sources add-rss "GitHub Changelog" "https://github.blog/changelog/feed/"
-uv run changelorg sources add-rss "GitHub Blog" "https://github.blog/feed/"
-uv run changelorg sources add-rss "GitHub Status" "https://www.githubstatus.com/history.rss"
-uv run changelorg sources add-rss "ty Releases" "https://github.com/astral-sh/ty/releases.atom"
-uv run changelorg sources add-rss "uv Releases" "https://github.com/astral-sh/uv/releases.atom"
-uv run changelorg sources add-rss "Python Releases" "https://www.python.org/downloads/feed.rss"
-uv run changelorg sources add-rss "Python Insider" "https://blog.python.org/feeds/posts/default"
-uv run changelorg sources add-rss "GitHub Desktop Releases" "https://github.com/desktop/desktop/releases.atom"
-uv run changelorg sources add-rss "iTerm2 Stable" "https://iterm2.com/appcasts/final.xml"
-uv run changelorg sources add-rss "IntelliJ IDEA Blog" "https://blog.jetbrains.com/idea/feed/"
-uv run changelorg sources add-rss "Slack API Changelog" "https://api.slack.com/changelog.rss"
-uv run changelorg sources add-rss "Slack Developer Docs Blog" "https://docs.slack.dev/changelog/rss.xml"
-uv run changelorg sources add-rss "VS Code Releases" "https://github.com/microsoft/vscode/releases.atom"
-uv run changelorg sources add-rss "VS Code Feed" "https://code.visualstudio.com/feed.xml"
-uv run changelorg sources add-rss "FastAPI Releases" "https://github.com/fastapi/fastapi/releases.atom"
-uv run changelorg sources add-rss "GitHub CLI Releases" "https://github.com/cli/cli/releases.atom"
-uv run changelorg sources add-rss "OpenCode Releases" "https://github.com/sst/opencode/releases.atom"
-uv run changelorg sources add-rss "DuckDB Releases" "https://github.com/duckdb/duckdb/releases.atom"
-uv run changelorg sources add-rss "Raycast Changelog" "https://raycast.com/changelog/feed.xml"
-uv run changelorg sources add-rss "OpenAI News" "https://openai.com/news/rss.xml"
-uv run changelorg sources add-rss "OpenAI Python SDK Releases" "https://github.com/openai/openai-python/releases.atom"
-uv run changelorg sources add-rss "Anthropic Python SDK Releases" "https://github.com/anthropics/anthropic-sdk-python/releases.atom"
-uv run changelorg sources add "Gemini and Gemma on Google Developers Blog" --plugin rss-atom --config url="https://developers.googleblog.com/feeds/posts/default?alt=rss" --config include_any=gemini --config include_any=gemma --config include_any="google ai studio" --config include_any="gemini api" --config include_any=diffusiongemma
-uv run changelorg sources add-rss "Google Gen AI Python SDK Releases" "https://github.com/googleapis/python-genai/releases.atom"
+uv run riffle sources add-rss "GitHub Changelog" "https://github.blog/changelog/feed/"
+uv run riffle sources add-rss "GitHub Blog" "https://github.blog/feed/"
+uv run riffle sources add-rss "GitHub Status" "https://www.githubstatus.com/history.rss"
+uv run riffle sources add-rss "ty Releases" "https://github.com/astral-sh/ty/releases.atom"
+uv run riffle sources add-rss "uv Releases" "https://github.com/astral-sh/uv/releases.atom"
+uv run riffle sources add-rss "Python Releases" "https://www.python.org/downloads/feed.rss"
+uv run riffle sources add-rss "Python Insider" "https://blog.python.org/feeds/posts/default"
+uv run riffle sources add-rss "GitHub Desktop Releases" "https://github.com/desktop/desktop/releases.atom"
+uv run riffle sources add-rss "iTerm2 Stable" "https://iterm2.com/appcasts/final.xml"
+uv run riffle sources add-rss "IntelliJ IDEA Blog" "https://blog.jetbrains.com/idea/feed/"
+uv run riffle sources add-rss "Slack API Changelog" "https://api.slack.com/changelog.rss"
+uv run riffle sources add-rss "Slack Developer Docs Blog" "https://docs.slack.dev/changelog/rss.xml"
+uv run riffle sources add-rss "VS Code Releases" "https://github.com/microsoft/vscode/releases.atom"
+uv run riffle sources add-rss "VS Code Feed" "https://code.visualstudio.com/feed.xml"
+uv run riffle sources add-rss "FastAPI Releases" "https://github.com/fastapi/fastapi/releases.atom"
+uv run riffle sources add-rss "GitHub CLI Releases" "https://github.com/cli/cli/releases.atom"
+uv run riffle sources add-rss "OpenCode Releases" "https://github.com/sst/opencode/releases.atom"
+uv run riffle sources add-rss "DuckDB Releases" "https://github.com/duckdb/duckdb/releases.atom"
+uv run riffle sources add-rss "Raycast Changelog" "https://raycast.com/changelog/feed.xml"
+uv run riffle sources add-rss "OpenAI News" "https://openai.com/news/rss.xml"
+uv run riffle sources add-rss "OpenAI Python SDK Releases" "https://github.com/openai/openai-python/releases.atom"
+uv run riffle sources add-rss "Anthropic Python SDK Releases" "https://github.com/anthropics/anthropic-sdk-python/releases.atom"
+uv run riffle sources add "Gemini and Gemma on Google Developers Blog" --plugin rss-atom --config url="https://developers.googleblog.com/feeds/posts/default?alt=rss" --config include_any=gemini --config include_any=gemma --config include_any="google ai studio" --config include_any="gemini api" --config include_any=diffusiongemma
+uv run riffle sources add-rss "Google Gen AI Python SDK Releases" "https://github.com/googleapis/python-genai/releases.atom"
 ```
 
 ## Games Profile Sources
@@ -90,7 +90,7 @@ These are valuable sources but are not RSS/Atom feeds, so they should get dedica
 These work today but may be too noisy for normal use.
 
 ```sh
-uv run changelorg sources add-rss "ty Main Commits" "https://github.com/astral-sh/ty/commits/main.atom"
-uv run changelorg sources add-rss "uv Main Commits" "https://github.com/astral-sh/uv/commits/main.atom"
-uv run changelorg sources add-rss "iTerm2 Testing" "https://iterm2.com/appcasts/testing.xml"
+uv run riffle sources add-rss "ty Main Commits" "https://github.com/astral-sh/ty/commits/main.atom"
+uv run riffle sources add-rss "uv Main Commits" "https://github.com/astral-sh/uv/commits/main.atom"
+uv run riffle sources add-rss "iTerm2 Testing" "https://iterm2.com/appcasts/testing.xml"
 ```

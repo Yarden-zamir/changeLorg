@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from changelorg import store
-from changelorg.auth import AGENT_TOKEN_PREFIX, Identity, agent_identity, github_browser_identity, hash_secret
-from changelorg.models import (
+from riffle import store
+from riffle.auth import AGENT_TOKEN_PREFIX, Identity, agent_identity, github_browser_identity, hash_secret
+from riffle.models import (
     AGENT_POLL_INTERVAL_SECONDS,
     AGENT_REQUEST_TTL,
     USER_CODE_ALPHABET,

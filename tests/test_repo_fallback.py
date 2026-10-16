@@ -8,19 +8,19 @@ from test_network import Wire, response
 from test_source_preview import source
 from test_source_preview import window as window  # noqa: PLC0414
 
-from changelorg import network, store
-from changelorg.discovery import discover_sources
-from changelorg.feeds import fetch_feed
-from changelorg.models import ChangeUpdate, SourceCreate, TimeWindow
-from changelorg.network import (
+from riffle import network, store
+from riffle.discovery import discover_sources
+from riffle.feeds import fetch_feed
+from riffle.models import ChangeUpdate, SourceCreate, TimeWindow
+from riffle.network import (
     FetchBudgetExceeded,
     PublicFetcher,
     PublicFetchError,
     RequestBudgetExceeded,
 )
-from changelorg.plugin import PluginManager
-from changelorg.plugins.rss_atom import RssAtomPlugin
-from changelorg.service import generate_changes
+from riffle.plugin import PluginManager
+from riffle.plugins.rss_atom import RssAtomPlugin
+from riffle.service import generate_changes
 
 RELEASE_URL = "https://github.com/Other/Repo/releases.atom"
 COMMIT_URL = "https://github.com/Other/Repo/commits.atom"

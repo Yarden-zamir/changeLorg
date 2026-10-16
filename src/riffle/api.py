@@ -13,12 +13,12 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from changelorg import store
-from changelorg.agent_access import router as agent_router
-from changelorg.auth import Identity, browser_identity, request_identity
-from changelorg.discovery import discover_sources, normalize_discovery_url
-from changelorg.enrichment import PROFILES
-from changelorg.models import (
+from riffle import store
+from riffle.agent_access import router as agent_router
+from riffle.auth import Identity, browser_identity, request_identity
+from riffle.discovery import discover_sources, normalize_discovery_url
+from riffle.enrichment import PROFILES
+from riffle.models import (
     Change,
     ChangeInput,
     ChangeUpdate,
@@ -35,20 +35,20 @@ from changelorg.models import (
     TimeWindow,
     utc_now,
 )
-from changelorg.network import (
+from riffle.network import (
     SOURCE_FETCH_SLOTS,
     PublicFetchError,
     validate_source_config,
 )
-from changelorg.plugin import PluginConfigError, PluginManager
-from changelorg.plugins.html_news import HtmlNewsPlugin
-from changelorg.plugins.rss_atom import RssAtomPlugin
-from changelorg.plugins.x import XPlugin, XUnavailable
-from changelorg.refresh import HourlyRefreshLoop
-from changelorg.request_body import BodyLimitMiddleware
-from changelorg.seed import DEFAULT_SOURCES, seed_default_sources
-from changelorg.service import generate_changes
-from changelorg.timeutils import parse_window
+from riffle.plugin import PluginConfigError, PluginManager
+from riffle.plugins.html_news import HtmlNewsPlugin
+from riffle.plugins.rss_atom import RssAtomPlugin
+from riffle.plugins.x import XPlugin, XUnavailable
+from riffle.refresh import HourlyRefreshLoop
+from riffle.request_body import BodyLimitMiddleware
+from riffle.seed import DEFAULT_SOURCES, seed_default_sources
+from riffle.service import generate_changes
+from riffle.timeutils import parse_window
 
 CurrentIdentity = Annotated[Identity, Depends(request_identity)]
 # Imports copy browser data, so they need a browser, never an agent token.
@@ -91,9 +91,9 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def create_app() -> FastAPI:
-    auth_enabled = _env_bool("CHANGELORG_AUTH_ENABLED", False)
+    auth_enabled = _env_bool("RIFFLE_AUTH_ENABLED", False)
     proxy_url = os.environ.get(
-        "CHANGELORG_OAUTH2_PROXY_URL", "http://oauth2-proxy:4180"
+        "RIFFLE_OAUTH2_PROXY_URL", "http://oauth2-proxy:4180"
     ).rstrip("/")
     environment = os.environ.get("KITSHN_ENVIRONMENT", "")
     default_origins = (
@@ -101,24 +101,24 @@ def create_app() -> FastAPI:
     )
     origins = [
         origin.strip().rstrip("/")
-        for origin in os.environ.get("CHANGELORG_CORS_ORIGINS", default_origins).split(
+        for origin in os.environ.get("RIFFLE_CORS_ORIGINS", default_origins).split(
             ","
         )
         if origin.strip()
     ]
-    public_origin = os.environ.get("CHANGELORG_PUBLIC_ORIGIN", "").rstrip("/")
+    public_origin = os.environ.get("RIFFLE_PUBLIC_ORIGIN", "").rstrip("/")
     if not public_origin and environment:
         if environment == "prod":
-            public_origin = "https://changelorg.yarden-zamir.com"
+            public_origin = "https://riffle.yarden-zamir.com"
         elif (
             environment.startswith("pr-")
             and environment.removeprefix("pr-").isascii()
             and environment.removeprefix("pr-").isdecimal()
         ):
-            public_origin = f"https://{environment}.changelorg.yarden-zamir.com"
+            public_origin = f"https://{environment}.riffle.yarden-zamir.com"
         else:
             raise ValueError(
-                "Set CHANGELORG_PUBLIC_ORIGIN for this deployment environment"
+                "Set RIFFLE_PUBLIC_ORIGIN for this deployment environment"
             )
     if public_origin:
         origins.append(public_origin)
@@ -136,7 +136,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         store.init_db()
-        if _env_bool("CHANGELORG_SEED_DEFAULT_SOURCES", True):
+        if _env_bool("RIFFLE_SEED_DEFAULT_SOURCES", True):
             seed_default_sources()
         app.state.auth_enabled = auth_enabled
         app.state.oauth2_proxy_url = proxy_url
@@ -144,7 +144,7 @@ def create_app() -> FastAPI:
             timeout=10,
             follow_redirects=False,
             trust_env=False,
-            headers={"User-Agent": "changelorg"},
+            headers={"User-Agent": "riffle"},
         ) as client:
             app.state.auth_client = client
             refresh_loop = HourlyRefreshLoop.from_env()
@@ -156,7 +156,7 @@ def create_app() -> FastAPI:
             finally:
                 await refresh_loop.stop()
 
-    app = FastAPI(title="changelorg", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Riffle", version="0.2.0", lifespan=lifespan)
     app.state.public_origin = public_origin
     app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(
@@ -167,8 +167,8 @@ def create_app() -> FastAPI:
         allow_headers=[
             "Content-Type",
             "X-Anonymous-Token",
-            "X-Changelorg-Owner",
-            "X-Changelorg-Request",
+            "X-Riffle-Owner",
+            "X-Riffle-Request",
         ],
     )
 
@@ -176,7 +176,7 @@ def create_app() -> FastAPI:
     async def private_requests(request: Request, call_next):
         if request.method in {"POST", "PATCH", "DELETE", "PUT"}:
             origin = request.headers.get("origin")
-            if request.headers.get("X-Changelorg-Request") != "1" or (
+            if request.headers.get("X-Riffle-Request") != "1" or (
                 origin is not None and origin.rstrip("/") not in origins
             ):
                 return JSONResponse(
@@ -240,8 +240,8 @@ def create_app() -> FastAPI:
     @app.post("/session/reset", status_code=204)
     def reset_session(request: Request) -> Response:
         response = Response(status_code=204)
-        for name in {"_changelorg_oauth", *request.cookies}:
-            if name == "_changelorg_oauth" or name.startswith("_changelorg_oauth_"):
+        for name in {"_riffle_oauth", *request.cookies}:
+            if name == "_riffle_oauth" or name.startswith("_riffle_oauth_"):
                 response.delete_cookie(
                     name, path="/", secure=True, httponly=True, samesite="lax"
                 )
@@ -471,7 +471,7 @@ def create_app() -> FastAPI:
     ) -> Change:
         return store.update_change(change_id, body, owner_id=identity.owner_id)
 
-    if _env_bool("CHANGELORG_MANUAL_GENERATE_API", False):
+    if _env_bool("RIFFLE_MANUAL_GENERATE_API", False):
 
         @app.post("/changes/generate", response_model=GenerationResult)
         def generate(
@@ -521,5 +521,5 @@ app = create_app()
 
 def run() -> None:
     uvicorn.run(
-        "changelorg.api:app", host="127.0.0.1", port=8000, reload=False, workers=1
+        "riffle.api:app", host="127.0.0.1", port=8000, reload=False, workers=1
     )

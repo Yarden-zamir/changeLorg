@@ -12,10 +12,10 @@ import pytest
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-from changelorg import store
-from changelorg.cli import app
-from changelorg.config import database_path
-from changelorg.models import (
+from riffle import store
+from riffle.cli import app
+from riffle.config import database_path
+from riffle.models import (
     DEFAULT_OWNER_ID,
     ChangeInput,
     ChangeUpdate,
@@ -24,9 +24,9 @@ from changelorg.models import (
     SourceUpdate,
     TimeWindow,
 )
-from changelorg.plugin import PluginManager
-from changelorg.seed import DEFAULT_SOURCES, seed_default_sources
-from changelorg.service import generate_changes
+from riffle.plugin import PluginManager
+from riffle.seed import DEFAULT_SOURCES, seed_default_sources
+from riffle.service import generate_changes
 
 ACCOUNT = "github:42"
 ANONYMOUS = "anon:" + "a" * 64
@@ -35,7 +35,7 @@ PUBLISHED = datetime(2001, 1, 1, 12, 30, 15, 123456, tzinfo=timezone(timedelta(h
 
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "changelorg.duckdb"
+    return tmp_path / "riffle.duckdb"
 
 
 def add_item(
@@ -563,17 +563,17 @@ def make_sqlite(path: Path, *, state: bool = True, invalid: bool = False):
 def test_sqlite_migration_preserves_ids_state_and_sequences_without_backup(
     tmp_path, monkeypatch, explicit, state, profile_config, expected_profile
 ):
-    legacy = tmp_path / "changelorg.db"
+    legacy = tmp_path / "riffle.db"
     make_sqlite(legacy, state=state)
     with closing(sqlite3.connect(legacy)) as connection, connection:
         connection.execute("UPDATE sources SET config = ?", [json.dumps({"url": "legacy", **profile_config})])
-    monkeypatch.setenv("CHANGELORG_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RIFFLE_DATA_DIR", str(tmp_path))
     if explicit:
-        monkeypatch.setenv("CHANGELORG_DB", str(legacy))
+        monkeypatch.setenv("RIFFLE_DB", str(legacy))
     else:
-        monkeypatch.delenv("CHANGELORG_DB", raising=False)
+        monkeypatch.delenv("RIFFLE_DB", raising=False)
     target = store.init_db()
-    assert target == (legacy if explicit else tmp_path / "changelorg.duckdb")
+    assert target == (legacy if explicit else tmp_path / "riffle.duckdb")
     assert sorted(path.name for path in tmp_path.iterdir()) == [target.name]
     source = store.get_source(17)
     assert source.id == 17
@@ -606,10 +606,10 @@ def test_sqlite_migration_preserves_ids_state_and_sequences_without_backup(
 
 @pytest.mark.parametrize("explicit", [False, True])
 def test_failed_sqlite_migration_keeps_original_and_no_partial_target(tmp_path, explicit):
-    legacy = tmp_path / "changelorg.db"
+    legacy = tmp_path / "riffle.db"
     make_sqlite(legacy, invalid=True)
     before = legacy.read_bytes()
-    target = legacy if explicit else tmp_path / "changelorg.duckdb"
+    target = legacy if explicit else tmp_path / "riffle.duckdb"
     with pytest.raises(RuntimeError, match="SQLite migration"):
         store.init_db(target)
     assert legacy.read_bytes() == before
@@ -619,7 +619,7 @@ def test_failed_sqlite_migration_keeps_original_and_no_partial_target(tmp_path, 
 
 
 def test_checkpoint_failure_does_not_replace_sqlite(tmp_path, monkeypatch):
-    legacy = tmp_path / "changelorg.db"
+    legacy = tmp_path / "riffle.db"
     make_sqlite(legacy)
     before = legacy.read_bytes()
     original_connect = duckdb.connect
@@ -648,7 +648,7 @@ def test_checkpoint_failure_does_not_replace_sqlite(tmp_path, monkeypatch):
 
 def test_existing_duckdb_does_not_import_sibling_again(db_path):
     source, _ = add_item(db_path)
-    legacy = db_path.with_name("changelorg.db")
+    legacy = db_path.with_name("riffle.db")
     make_sqlite(legacy)
     store.init_db(db_path)
     assert [item.id for item in store.list_sources(db_path=db_path)] == [source.id]
@@ -656,8 +656,8 @@ def test_existing_duckdb_does_not_import_sibling_again(db_path):
 
 
 def test_default_database_path_and_one_time_owner_seed(db_path, monkeypatch):
-    monkeypatch.delenv("CHANGELORG_DB", raising=False)
-    monkeypatch.setenv("CHANGELORG_DATA_DIR", str(db_path.parent))
+    monkeypatch.delenv("RIFFLE_DB", raising=False)
+    monkeypatch.setenv("RIFFLE_DATA_DIR", str(db_path.parent))
     assert database_path() == db_path
     assert seed_default_sources(db_path) == len(DEFAULT_SOURCES)
     assert store.list_sources(db_path=db_path, owner_id=ACCOUNT) == []
@@ -725,7 +725,7 @@ def test_concurrent_transactions_keep_ids_and_profiles_consistent(db_path):
 
 
 def test_cli_explicit_owner_and_duckdb_help(db_path, monkeypatch):
-    monkeypatch.setenv("CHANGELORG_DB", str(db_path))
+    monkeypatch.setenv("RIFFLE_DB", str(db_path))
     runner = CliRunner()
     result = runner.invoke(app, ["--owner", ACCOUNT, "sources", "add-rss", "Feed", "https://example.com"])
     assert result.exit_code == 0, result.output

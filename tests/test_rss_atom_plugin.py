@@ -2,14 +2,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from changelorg.enrichment import enrich_change, enrichment_profile, profile_for
-from changelorg.models import Source, TimeWindow
-from changelorg.plugin import PluginConfigError
-from changelorg.plugins.rss_atom import _matches_filters, _string_list_config
+from riffle.enrichment import enrich_change, enrichment_profile, profile_for
+from riffle.models import Source, TimeWindow
+from riffle.plugin import PluginConfigError
+from riffle.plugins.rss_atom import _matches_filters, _string_list_config
 
 
 def test_cli_parse_config_collects_repeated_keys() -> None:
-    from changelorg.cli import _parse_config
+    from riffle.cli import _parse_config
 
     config = _parse_config(["url=https://example.com/feed.xml", "include_any=gemini", "include_any=gemma"])
 

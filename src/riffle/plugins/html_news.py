@@ -5,15 +5,15 @@ from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from changelorg.enrichment import PROFILES, compact_blocks, plain_text, profile_for
-from changelorg.models import ChangeInput, Source, TimeWindow
-from changelorg.network import (
+from riffle.enrichment import PROFILES, compact_blocks, plain_text, profile_for
+from riffle.models import ChangeInput, Source, TimeWindow
+from riffle.network import (
     MAX_ENTRIES,
     PublicFetcher,
     RequestBudgetExceeded,
     validate_source_config,
 )
-from changelorg.plugin import PluginConfigError
+from riffle.plugin import PluginConfigError
 
 MONTHS = {
     "January": 1,
@@ -207,7 +207,7 @@ class HtmlNewsPlugin:
             raise PluginConfigError("html-news config 'enrichment_profile' must be a string")
         enrichment_profile = profile_for(url, enrichment_profile_name)
 
-        client = PublicFetcher(user_agent=source.config.get("user_agent", "changelorg/0.1"))
+        client = PublicFetcher(user_agent=source.config.get("user_agent", "riffle/0.1"))
         index_response = client.get(url)
         links = _article_links(index_response.text, str(index_response.url), [article_prefix], exclude_prefixes)[:limit]
 

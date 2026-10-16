@@ -9,16 +9,16 @@ from test_api_profiles import owner_headers, source_body
 from test_network import Wire
 from test_network import response as wire_response
 
-from changelorg import api, store
-from changelorg.models import ChangeInput, Source, SourceCreate
-from changelorg.network import (
+from riffle import api, store
+from riffle.models import ChangeInput, Source, SourceCreate
+from riffle.network import (
     SOURCE_FETCH_SLOTS,
     FetchBudgetExceeded,
     PublicFetchError,
     RequestBudgetExceeded,
     validate_public_url,
 )
-from changelorg.plugins.rss_atom import RssAtomPlugin
+from riffle.plugins.rss_atom import RssAtomPlugin
 
 
 def assert_no_persistence(owner: str) -> None:
@@ -28,7 +28,7 @@ def assert_no_persistence(owner: str) -> None:
 
 
 def test_x_discovery_and_unavailable_keyless_preview(api_client, monkeypatch):
-    from changelorg.plugins.x import XPlugin, XUnavailable
+    from riffle.plugins.x import XPlugin, XUnavailable
 
     def unavailable(*args):
         raise XUnavailable("Unavailable public timeline")
@@ -46,7 +46,7 @@ def test_x_discovery_and_unavailable_keyless_preview(api_client, monkeypatch):
     assert draft["config"]["url"] == "https://x.com/Example"
     preview = api_client.post("/sources/preview", headers=headers, json=draft)
     assert preview.status_code == 424
-    assert_no_persistence(headers["X-Changelorg-Owner"])
+    assert_no_persistence(headers["X-Riffle-Owner"])
 
 
 @pytest.mark.parametrize(
@@ -54,10 +54,10 @@ def test_x_discovery_and_unavailable_keyless_preview(api_client, monkeypatch):
     [
         ("X-Anonymous-Token", None, 401),
         ("X-Anonymous-Token", "invalid-token", 401),
-        ("X-Changelorg-Owner", None, 412),
-        ("X-Changelorg-Owner", "github:99999", 412),
-        ("X-Changelorg-Request", None, 403),
-        ("X-Changelorg-Request", "true", 403),
+        ("X-Riffle-Owner", None, 412),
+        ("X-Riffle-Owner", "github:99999", 412),
+        ("X-Riffle-Request", None, 403),
+        ("X-Riffle-Request", "true", 403),
         ("Origin", "https://untrusted.example", 403),
         ("Origin", "null", 403),
     ],
@@ -70,7 +70,7 @@ def test_discovery_access_checks_precede_fetch(
     status: int,
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     if value is None:
         del headers[header]
     else:
@@ -117,7 +117,7 @@ def test_discovery_initial_validation_returns_422_without_fetch(
     assert "SECRET" not in response.text
     assert "PRIVATE" not in response.text
     discover.assert_not_called()
-    assert_no_persistence(headers["X-Changelorg-Owner"])
+    assert_no_persistence(headers["X-Riffle-Owner"])
 
 
 @pytest.mark.parametrize("count", [0, 1, 10])
@@ -133,7 +133,7 @@ def test_discovery_returns_drafts_without_profiles_or_persistence(
     ]
     discover = Mock(return_value=drafts)
     monkeypatch.setattr(api, "discover_sources", discover)
-    assert_no_persistence(headers["X-Changelorg-Owner"])
+    assert_no_persistence(headers["X-Riffle-Owner"])
 
     response = api_client.post(
         "/sources/discover", headers=headers, json={"url": "https://example.com"}
@@ -154,7 +154,7 @@ def test_discovery_returns_drafts_without_profiles_or_persistence(
         assert "id" not in result
         assert "owner_id" not in result
     discover.assert_called_once()
-    assert_no_persistence(headers["X-Changelorg-Owner"])
+    assert_no_persistence(headers["X-Riffle-Owner"])
 
 
 @pytest.mark.parametrize(
@@ -185,7 +185,7 @@ def test_discovery_forwards_normalized_public_url(
     else:
         assert url.host == "example.com"
         assert url.path == "/feed"
-    assert_no_persistence(headers["X-Changelorg-Owner"])
+    assert_no_persistence(headers["X-Riffle-Owner"])
 
 
 @pytest.mark.parametrize(
@@ -212,7 +212,7 @@ def test_discovery_fetch_errors_return_generic_502_without_persistence(
     for private_detail in ("SECRET", "10.0.0.1", "PRIVATE", error_type.__name__):
         assert private_detail not in response.text
     discover.assert_called_once()
-    assert_no_persistence(headers["X-Changelorg-Owner"])
+    assert_no_persistence(headers["X-Riffle-Owner"])
 
 
 def test_discovery_shares_four_fetch_slots_and_releases_after_success_and_error(
@@ -255,7 +255,7 @@ def test_discovery_shares_four_fetch_slots_and_releases_after_success_and_error(
         )
         discovery.assert_not_called()
         preview.assert_not_called()
-        assert_no_persistence(headers["X-Changelorg-Owner"])
+        assert_no_persistence(headers["X-Riffle-Owner"])
 
         SOURCE_FETCH_SLOTS.release()
         held -= 1
@@ -271,7 +271,7 @@ def test_discovery_shares_four_fetch_slots_and_releases_after_success_and_error(
                 json={"url": "https://example.com"},
             )
             assert response.status_code == status, response.text
-            assert_no_persistence(headers["X-Changelorg-Owner"])
+            assert_no_persistence(headers["X-Riffle-Owner"])
         assert discovery.call_count == 3
         assert (
             api_client.post(
@@ -292,7 +292,7 @@ def test_real_discovery_draft_previews_and_saves_only_with_explicit_profile(
     api_client: TestClient, monkeypatch: pytest.MonkeyPatch, html: bool
 ) -> None:
     headers = owner_headers(api_client)
-    owner = headers["X-Changelorg-Owner"]
+    owner = headers["X-Riffle-Owner"]
     feed = b"""<rss version='2.0'><channel><title>Example Releases</title>
     <item><guid>release-1</guid><title>Release one</title>
     <description>A new release</description></item></channel></rss>"""
@@ -402,4 +402,4 @@ def test_real_discovery_fetch_rejections_are_safe_and_never_persist(
         assert "127.0.0.1" not in response.text
         assert len(wire.sockets) == (0 if failure == "private-dns" else 1)
         assert all(sock.closed for sock in wire.sockets)
-        assert_no_persistence(headers["X-Changelorg-Owner"])
+        assert_no_persistence(headers["X-Riffle-Owner"])

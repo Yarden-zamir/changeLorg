@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from changelorg.models import GenerationError
-from changelorg.network import SOURCE_FETCH_SLOTS
-from changelorg.service import generate_changes
-from changelorg.timeutils import parse_window
+from riffle.models import GenerationError
+from riffle.network import SOURCE_FETCH_SLOTS
+from riffle.service import generate_changes
+from riffle.timeutils import parse_window
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -62,14 +62,14 @@ class HourlyRefreshLoop:
     @classmethod
     def from_env(cls) -> HourlyRefreshLoop:
         return cls(
-            interval_seconds=_env_int("CHANGELORG_REFRESH_INTERVAL_SECONDS", 3600),
-            window=os.environ.get("CHANGELORG_REFRESH_WINDOW", "30d"),
-            initial_delay_seconds=_env_int("CHANGELORG_REFRESH_INITIAL_DELAY_SECONDS", 5),
+            interval_seconds=_env_int("RIFFLE_REFRESH_INTERVAL_SECONDS", 3600),
+            window=os.environ.get("RIFFLE_REFRESH_WINDOW", "30d"),
+            initial_delay_seconds=_env_int("RIFFLE_REFRESH_INITIAL_DELAY_SECONDS", 5),
         )
 
     @staticmethod
     def enabled_from_env() -> bool:
-        return _env_bool("CHANGELORG_AUTO_REFRESH", True)
+        return _env_bool("RIFFLE_AUTO_REFRESH", True)
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
